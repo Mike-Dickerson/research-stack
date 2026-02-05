@@ -171,6 +171,18 @@ def conduct_research(task):
     print(f"  → Analyzing with Ollama ({OLLAMA_MODEL})...")
     analysis = analyze_with_llm(hypothesis, papers)
 
+    # Ensure required fields exist (Ollama may return malformed JSON)
+    if "findings" not in analysis:
+        analysis["findings"] = []
+    if "confidence" not in analysis:
+        analysis["confidence"] = 0.5
+    if "evidence_count" not in analysis:
+        analysis["evidence_count"] = len(papers)
+    if "concerns" not in analysis:
+        analysis["concerns"] = []
+    if "methodology" not in analysis:
+        analysis["methodology"] = "unknown"
+
     # Add paper references to findings
     if papers:
         analysis["findings"].append(f"Top paper: {papers[0]['title']} ({papers[0]['arxiv_id']})")

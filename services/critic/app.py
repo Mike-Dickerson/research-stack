@@ -349,6 +349,16 @@ def main():
         # Evaluate the result using Crustafarian Precepts
         evaluation = evaluate_result(result_msg)
 
+        # Ensure required fields exist (Ollama may return malformed JSON)
+        if "score" not in evaluation:
+            evaluation["score"] = 0.5
+        if "flags" not in evaluation:
+            evaluation["flags"] = []
+        if "notes" not in evaluation:
+            evaluation["notes"] = "Evaluation completed"
+        if "precept_scores" not in evaluation:
+            evaluation["precept_scores"] = {}
+
         # Create critique message with precept scores
         critique_message = {
             "task_id": task_id,
