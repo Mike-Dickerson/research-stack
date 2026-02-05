@@ -1,0 +1,4 @@
+kafka-python
+jinja2
+markdown
+weasyprint
