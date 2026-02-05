@@ -1,4 +1,7 @@
-\publications
-.env
-node_modules
+/publications/
+/data/kafka/
+/data/mimio/
+/data/postgres/
+/.env
+node_modules/
 
