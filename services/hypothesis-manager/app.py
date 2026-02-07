@@ -195,7 +195,9 @@ def ensure_hypothesis_exists(task_id):
             'completed_at': None,
             'result_count': 0,
             'critique_count': 0,
-            'external_participated': False
+            'external_participated': False,
+            'iteration': 1,
+            'max_iterations': 3
         }
         results[task_id] = []
         critiques[task_id] = []
@@ -307,13 +309,25 @@ def kafka_listener():
                     })
 
                 elif topic == 'research.consensus':
-                    hypotheses[task_id]['status'] = 'COMPLETED'
+                    decision = event.get('decision', '')
+                    iteration = event.get('iteration', 1)
+                    max_iterations = event.get('max_iterations', 3)
+
                     hypotheses[task_id]['score'] = event.get('average_score')
-                    hypotheses[task_id]['decision'] = event.get('decision')
+                    hypotheses[task_id]['decision'] = decision
                     hypotheses[task_id]['consensus_status'] = event.get('consensus_status')
                     hypotheses[task_id]['score_variance'] = event.get('score_variance')
-                    hypotheses[task_id]['completed_at'] = event.get('created_at')
+                    hypotheses[task_id]['iteration'] = iteration
+                    hypotheses[task_id]['max_iterations'] = max_iterations
                     hypotheses[task_id]['external_participated'] = event.get('external_swarm_participated', False)
+
+                    # Only mark as COMPLETED for final decisions
+                    if decision in ['APPROVED', 'FAILED']:
+                        hypotheses[task_id]['status'] = 'COMPLETED'
+                        hypotheses[task_id]['completed_at'] = event.get('created_at')
+                    elif decision == 'NEEDS_MORE_RESEARCH':
+                        # Keep processing - orchestrator will retry
+                        hypotheses[task_id]['status'] = f'RETRY {iteration}/{max_iterations}'
 
         except StopIteration:
             # Consumer timeout - no more messages, continue waiting
@@ -388,7 +402,9 @@ def create_task(hypothesis, domain="unknown", search_terms=None):
         'completed_at': None,
         'result_count': 0,
         'critique_count': 0,
-        'external_participated': False
+        'external_participated': False,
+        'iteration': 1,
+        'max_iterations': 3
     }
     results[task_id] = []
     critiques[task_id] = []
