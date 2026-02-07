@@ -1,7 +1,7 @@
 publications/
 data/
 infra/
-ollama-models/
+ollama-models/models/blobs/
 /.env
 node_modules/
 
