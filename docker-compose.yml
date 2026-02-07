@@ -1,0 +1,229 @@
+version: "3.9"
+
+networks:
+  research-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  kafka-data:
+  zookeeper-data:
+  minio-data:
+  ollama-data:
+
+services:
+
+  # ---------------------------
+  # ZooKeeper (Kafka Dependency)
+  # ---------------------------
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.3
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+    networks:
+      - research-net
+    ports:
+      - "2181:2181"
+
+
+  # ---------------------------
+  # Kafka Broker
+  # ---------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - research-net
+    ports:
+      - "9092:9092"
+
+
+  # ---------------------------
+  # Kafka UI (Debug / Dev Gold)
+  # ---------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=research-cluster
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+    networks:
+      - research-net
+    ports:
+      - "8080:8080"
+
+  # ---------------------------
+  # PostgreSQL (Research Brain DB)
+  # ---------------------------
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: research
+      POSTGRES_PASSWORD: researchpass
+      POSTGRES_DB: researchdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - research-net
+    ports:
+      - "5432:5432"
+
+  # ---------------------------
+  # MinIO (Object Storage)
+  # ---------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniopass
+    volumes:
+      - minio-data:/data
+    networks:
+      - research-net
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  # ---------------------------
+  # Research Orchestrator (Python)
+  # ---------------------------
+  research-orchestrator:
+    build: ./services/orchestrator
+    container_name: research-orchestrator
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: researchdb
+      POSTGRES_USER: research
+      POSTGRES_PASSWORD: researchpass
+    networks:
+      - research-net
+
+  # ---------------------------
+  # Research Agent Runner (Python)
+  # ---------------------------
+  research-agent-runner:
+    build: ./services/agent-runner
+    container_name: research-agent-runner
+    depends_on:
+      - kafka
+      - ollama
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      OLLAMA_HOST: http://ollama:11434
+    networks:
+      - research-net
+
+  # ---------------------------
+  # Research Critic (Python)
+  # ---------------------------
+  research-critic:
+    build: ./services/critic
+    container_name: research-critic
+    depends_on:
+      - kafka
+      - ollama
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      OLLAMA_HOST: http://ollama:11434
+    networks:
+      - research-net
+
+  # ---------------------------
+  # Moltbook Bridge (Stub Python)
+  # ---------------------------
+  moltbook-bridge:
+    build: ./services/moltbook-bridge
+    container_name: moltbook-bridge
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    networks:
+      - research-net
+
+  # ---------------------------
+  # Ollama (Local LLM Server)
+  # ---------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ./ollama-models:/root/.ollama  # Local directory - survives docker-compose down -v
+    networks:
+      - research-net
+    ports:
+      - "11434:11434"
+
+  # ---------------------------
+  # Document Generator (Python)
+  # ---------------------------
+  document-generator:
+    build: ./services/document-generator
+    container_name: document-generator
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    volumes:
+      - ./publications:/app/publications
+    networks:
+      - research-net
+
+  # ---------------------------
+  # Swarm Dashboard (Web UI)
+  # ---------------------------
+  swarm-dashboard:
+    build: ./services/swarm-dashboard
+    container_name: swarm-dashboard
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    ports:
+      - "5004:5000"
+    networks:
+      - research-net
+
+  # ---------------------------
+  # Hypothesis Manager (Web UI)
+  # ---------------------------
+  hypothesis-manager:
+    build: ./services/hypothesis-manager
+    container_name: hypothesis-manager
+    depends_on:
+      - kafka
+      - ollama
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ./publications:/app/publications
+    ports:
+      - "5001:5001"
+    networks:
+      - research-net

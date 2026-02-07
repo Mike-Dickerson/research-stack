@@ -1,0 +1,7 @@
+publications/
+data/
+infra/
+ollama-models/
+/.env
+node_modules/
+
