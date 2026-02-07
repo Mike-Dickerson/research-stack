@@ -1,5 +1,6 @@
 /publications/
 /data/kafka/
+/ollama-models/
 /data/mimio/
 /data/postgres/
 /.env
