@@ -154,15 +154,17 @@ services:
       - research-net
 
   # ---------------------------
-  # Moltbook Bridge (Stub Python)
+  # Moltbook Bridge (External Swarm)
   # ---------------------------
   moltbook-bridge:
     build: ./services/moltbook-bridge
     container_name: moltbook-bridge
     depends_on:
       - kafka
+      - ollama
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+      OLLAMA_HOST: http://ollama:11434
     networks:
       - research-net
 

@@ -597,9 +597,97 @@ HTML_TEMPLATE = """
             font-size: 0.9em;
             margin-left: 15px;
         }
+
+        /* Loading overlay styles */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(26, 26, 46, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .loading-overlay.active {
+            display: flex;
+        }
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #0f3460;
+            border-top: 4px solid #38ef7d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-text {
+            color: #38ef7d;
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .loading-subtext {
+            color: #888;
+            font-size: 0.95em;
+        }
+        .loading-steps {
+            margin-top: 20px;
+            text-align: left;
+        }
+        .loading-step {
+            padding: 8px 0;
+            color: #666;
+            transition: color 0.3s;
+        }
+        .loading-step.active {
+            color: #38ef7d;
+        }
+        .loading-step.done {
+            color: #27ae60;
+        }
+        .loading-step::before {
+            content: '○ ';
+            margin-right: 8px;
+        }
+        .loading-step.active::before {
+            content: '◉ ';
+            animation: pulse 1s infinite;
+        }
+        .loading-step.done::before {
+            content: '✓ ';
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        textarea:disabled, button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Submitting Hypothesis...</div>
+        <div class="loading-subtext">This may take a few seconds</div>
+        <div class="loading-steps">
+            <div id="step1" class="loading-step active">Detecting research domain...</div>
+            <div id="step2" class="loading-step">Extracting search terms...</div>
+            <div id="step3" class="loading-step">Publishing to research swarm...</div>
+        </div>
+    </div>
+
     <div class="header">
         <h1>Hypothesis Manager</h1>
         <div class="subtitle">Submit and track research hypotheses</div>
@@ -699,9 +787,59 @@ Example: Galaxy rotation curve anomalies may be explainable without non-baryonic
     </div>
 
     <div class="links">
-        <a href="http://localhost:5000">Swarm Dashboard</a> |
+        <a href="http://localhost:5004">Swarm Dashboard</a> |
         <a href="http://localhost:8080">Kafka UI</a>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('.submit-form form');
+            const textarea = form.querySelector('textarea');
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const overlay = document.getElementById('loadingOverlay');
+            const steps = ['step1', 'step2', 'step3'];
+
+            form.addEventListener('submit', function(e) {
+                // Don't prevent default - let the form submit normally
+                // But show loading state first
+
+                if (!textarea.value.trim()) {
+                    return; // Let browser validation handle empty input
+                }
+
+                // Disable inputs
+                textarea.disabled = true;
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Submitting...';
+
+                // Show loading overlay
+                overlay.classList.add('active');
+
+                // Animate through steps (simulated timing)
+                let currentStep = 0;
+
+                function advanceStep() {
+                    if (currentStep > 0) {
+                        document.getElementById(steps[currentStep - 1]).classList.remove('active');
+                        document.getElementById(steps[currentStep - 1]).classList.add('done');
+                    }
+                    if (currentStep < steps.length) {
+                        document.getElementById(steps[currentStep]).classList.add('active');
+                        currentStep++;
+                        // Step timing: domain detection ~2s, search terms ~1.5s, publish ~0.5s
+                        const delays = [2000, 1500, 500];
+                        if (currentStep < steps.length) {
+                            setTimeout(advanceStep, delays[currentStep - 1] || 1500);
+                        }
+                    }
+                }
+
+                advanceStep();
+
+                // Form will submit and redirect naturally
+            });
+        });
+    </script>
 </body>
 </html>
 """
