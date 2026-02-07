@@ -200,16 +200,30 @@ HTML_TEMPLATE = """
 
 def update_stats():
     """Background thread to read Kafka and update stats"""
-    consumer = KafkaConsumer(
-        'research.task',
-        'research.result',
-        'research.critique',
-        'research.consensus',
-        bootstrap_servers=KAFKA,
-        auto_offset_reset='earliest',
-        value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-        group_id='dashboard-reader'
-    )
+    from kafka.errors import NoBrokersAvailable
+    import time
+
+    while True:
+        try:
+            print("Dashboard connecting to Kafka...")
+            consumer = KafkaConsumer(
+                'research.task',
+                'research.result',
+                'research.critique',
+                'research.consensus',
+                bootstrap_servers=KAFKA,
+                auto_offset_reset='earliest',
+                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                group_id='dashboard-reader'
+            )
+            print("Dashboard connected to Kafka!")
+            break
+        except NoBrokersAvailable:
+            print("Kafka not available, retrying in 5s...")
+            time.sleep(5)
+        except Exception as e:
+            print(f"Kafka error: {e}, retrying in 5s...")
+            time.sleep(5)
 
     for msg in consumer:
         topic = msg.topic
@@ -234,31 +248,31 @@ def update_stats():
 
         elif topic == 'research.result':
             stats['results'] += 1
-            agent = event.get('agent_id', 'unknown')
-            confidence = event.get('confidence', 0.0)
+            agent = event.get('agent_id', 'unknown') or 'unknown'
+            confidence = event.get('confidence') or 0.0  # Handle None values
             stats['recent_events'].insert(0, {
                 'type': 'result',
                 'label': 'RESULT',
                 'time': time_str,
-                'message': f"Agent {agent[:30]}... reported confidence {confidence:.2f}"
+                'message': f"Agent {agent[:30]}... reported confidence {float(confidence):.2f}"
             })
 
         elif topic == 'research.critique':
             stats['critiques'] += 1
-            score = event.get('score', 0.0)
+            score = event.get('score') or 0.0  # Handle None values
             stats['recent_events'].insert(0, {
                 'type': 'critique',
                 'label': 'CRITIQUE',
                 'time': time_str,
-                'message': f"Peer review score: {score:.2f}/1.0"
+                'message': f"Peer review score: {float(score):.2f}/1.0"
             })
 
         elif topic == 'research.consensus':
             stats['consensus'] += 1
-            decision = event.get('decision', 'UNKNOWN')
-            avg_score = event.get('average_score', 0.0)
-            consensus_status = event.get('consensus_status', 'UNKNOWN')
-            critique_count = event.get('critique_count', 0)
+            decision = event.get('decision') or 'UNKNOWN'
+            avg_score = event.get('average_score') or 0.0  # Handle None values
+            consensus_status = event.get('consensus_status') or 'UNKNOWN'
+            critique_count = event.get('critique_count') or 0
             external = event.get('external_swarm_participated', False)
 
             stats['recent_consensus'].insert(0, {

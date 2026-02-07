@@ -205,7 +205,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
     ports:
-      - "5000:5000"
+      - "5004:5000"
     networks:
       - research-net
 
@@ -217,8 +217,10 @@ services:
     container_name: hypothesis-manager
     depends_on:
       - kafka
+      - ollama
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+      OLLAMA_HOST: http://ollama:11434
     volumes:
       - ./publications:/app/publications
     ports:

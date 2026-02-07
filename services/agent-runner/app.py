@@ -45,12 +45,9 @@ def create_producer():
     )
 
 
-def search_arxiv(hypothesis, max_results=10):
+def search_arxiv(search_query, max_results=10):
     """Search arXiv for relevant papers"""
     try:
-        # Extract key terms for search
-        search_query = hypothesis[:200]  # Use hypothesis as search query
-
         search = arxiv.Search(
             query=search_query,
             max_results=max_results,
@@ -61,10 +58,11 @@ def search_arxiv(hypothesis, max_results=10):
         for result in search.results():
             papers.append({
                 "title": result.title,
-                "authors": [author.name for author in result.authors][:3],  # First 3 authors
-                "summary": result.summary[:300],  # First 300 chars
+                "authors": [author.name for author in result.authors][:3],
+                "summary": result.summary[:300],
                 "published": result.published.strftime("%Y-%m-%d"),
-                "arxiv_id": result.entry_id.split('/')[-1]
+                "source": "arXiv",
+                "id": result.entry_id.split('/')[-1]
             })
 
         return papers
@@ -73,27 +71,157 @@ def search_arxiv(hypothesis, max_results=10):
         return []
 
 
-def analyze_with_llm(hypothesis, papers):
+def search_pubmed(search_query, max_results=10):
+    """Search PubMed for biomedical papers"""
+    try:
+        # PubMed E-utilities API (free, no API key required for low volume)
+        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+        # Search for paper IDs
+        search_url = f"{base_url}/esearch.fcgi"
+        search_params = {
+            "db": "pubmed",
+            "term": search_query,
+            "retmax": max_results,
+            "retmode": "json",
+            "sort": "relevance"
+        }
+
+        search_resp = requests.get(search_url, params=search_params, timeout=10)
+        search_data = search_resp.json()
+
+        ids = search_data.get("esearchresult", {}).get("idlist", [])
+        if not ids:
+            return []
+
+        # Fetch paper details
+        fetch_url = f"{base_url}/esummary.fcgi"
+        fetch_params = {
+            "db": "pubmed",
+            "id": ",".join(ids),
+            "retmode": "json"
+        }
+
+        fetch_resp = requests.get(fetch_url, params=fetch_params, timeout=10)
+        fetch_data = fetch_resp.json()
+
+        papers = []
+        result_data = fetch_data.get("result", {})
+        for pmid in ids:
+            if pmid in result_data:
+                paper = result_data[pmid]
+                authors = paper.get("authors", [])
+                author_names = [a.get("name", "") for a in authors[:3]]
+
+                papers.append({
+                    "title": paper.get("title", ""),
+                    "authors": author_names,
+                    "summary": paper.get("sorttitle", "")[:300],
+                    "published": paper.get("pubdate", ""),
+                    "source": "PubMed",
+                    "id": f"PMID:{pmid}"
+                })
+
+        return papers
+    except Exception as e:
+        print(f"  ⚠ PubMed search error: {e}")
+        return []
+
+
+def search_semantic_scholar(search_query, max_results=10):
+    """Search Semantic Scholar for academic papers (multi-domain)"""
+    try:
+        # Semantic Scholar API (free, rate limited)
+        url = "https://api.semanticscholar.org/graph/v1/paper/search"
+        params = {
+            "query": search_query,
+            "limit": max_results,
+            "fields": "title,authors,abstract,year,externalIds"
+        }
+
+        headers = {"Accept": "application/json"}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+
+        if resp.status_code != 200:
+            print(f"  ⚠ Semantic Scholar API returned {resp.status_code}")
+            return []
+
+        data = resp.json()
+        papers = []
+
+        for paper in data.get("data", []):
+            authors = paper.get("authors", [])
+            author_names = [a.get("name", "") for a in authors[:3]]
+
+            # Get external ID (prefer DOI)
+            ext_ids = paper.get("externalIds", {})
+            paper_id = ext_ids.get("DOI") or ext_ids.get("ArXiv") or ext_ids.get("PubMed") or ""
+
+            papers.append({
+                "title": paper.get("title", ""),
+                "authors": author_names,
+                "summary": (paper.get("abstract") or "")[:300],
+                "published": str(paper.get("year", "")),
+                "source": "Semantic Scholar",
+                "id": paper_id
+            })
+
+        return papers
+    except Exception as e:
+        print(f"  ⚠ Semantic Scholar search error: {e}")
+        return []
+
+
+def search_papers(search_query, sources, max_per_source=5):
+    """Search multiple sources based on domain configuration"""
+    all_papers = []
+
+    for source in sources:
+        print(f"  → Searching {source}...")
+
+        if source == "arxiv":
+            papers = search_arxiv(search_query, max_results=max_per_source)
+        elif source == "pubmed":
+            papers = search_pubmed(search_query, max_results=max_per_source)
+        elif source == "semantic_scholar":
+            papers = search_semantic_scholar(search_query, max_results=max_per_source)
+        else:
+            print(f"  ⚠ Unknown source: {source}")
+            papers = []
+
+        print(f"    Found {len(papers)} papers from {source}")
+        all_papers.extend(papers)
+
+    return all_papers
+
+
+def analyze_with_llm(hypothesis, papers, domain="unknown"):
     """Use Ollama (local SLM) to analyze hypothesis against research papers"""
     try:
-        # Build context from papers
+        # Build context from papers with source info
         papers_context = "\n\n".join([
-            f"Paper {i+1}: {p['title']}\nAuthors: {', '.join(p['authors'])}\nAbstract: {p['summary']}\nPublished: {p['published']}"
-            for i, p in enumerate(papers[:5])  # Use top 5 papers
+            f"Paper {i+1} [{p.get('source', 'Unknown')}]: {p['title']}\nAuthors: {', '.join(p['authors'])}\nAbstract: {p['summary']}\nPublished: {p['published']}"
+            for i, p in enumerate(papers[:7])  # Use top 7 papers
         ])
 
-        prompt = f"""You are a scientific research analyst. Analyze this hypothesis against the provided research papers.
+        # Get sources used
+        sources_used = list(set(p.get('source', 'Unknown') for p in papers))
+
+        prompt = f"""You are a scientific research analyst specializing in {domain}. Analyze this hypothesis against the provided research papers.
+
+IMPORTANT: Only discuss findings that are DIRECTLY relevant to the hypothesis. Do not mention unrelated topics.
 
 Hypothesis: {hypothesis}
+Research Domain: {domain}
 
-Research Papers from arXiv:
+Research Papers from {', '.join(sources_used)}:
 {papers_context}
 
 Provide:
 1. A confidence score (0.0-1.0) for how well the hypothesis is supported by existing research
-2. Key findings (3-5 bullet points)
+2. Key findings (3-5 bullet points) - ONLY findings directly relevant to the hypothesis
 3. Evidence count (number of relevant supporting papers found)
-4. Any concerns or contradictions
+4. Any concerns or contradictions with the hypothesis specifically
 
 Format your response as JSON:
 {{
@@ -101,7 +229,7 @@ Format your response as JSON:
     "findings": ["finding1", "finding2", ...],
     "evidence_count": number,
     "concerns": ["concern1", "concern2", ...],
-    "methodology": "ollama_phi3_analysis_v1"
+    "methodology": "ollama_phi3_multi_source_v1"
 }}"""
 
         # Call Ollama
@@ -109,12 +237,13 @@ Format your response as JSON:
         response = client.chat(
             model=OLLAMA_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            format="json"  # Request JSON output
+            format="json"
         )
 
         # Parse JSON response
         response_text = response['message']['content']
         result = json.loads(response_text.strip())
+        result["sources_searched"] = sources_used
         return result
 
     except Exception as e:
@@ -125,8 +254,8 @@ Format your response as JSON:
 
 def fallback_analysis(hypothesis, papers):
     """Fallback analysis when LLM is unavailable"""
-    # Simple heuristic-based analysis
     evidence_count = len(papers)
+    sources_used = list(set(p.get('source', 'Unknown') for p in papers))
 
     # Base confidence on number of papers found
     if evidence_count >= 8:
@@ -137,9 +266,9 @@ def fallback_analysis(hypothesis, papers):
         confidence = round(random.uniform(0.35, 0.60), 2)
 
     findings = [
-        f"Found {evidence_count} relevant papers in arXiv database",
+        f"Found {evidence_count} relevant papers from {', '.join(sources_used)}",
         f"Most recent research published: {papers[0]['published'] if papers else 'N/A'}",
-        "Hypothesis aligns with existing gravitational research literature" if evidence_count > 5 else "Limited direct evidence in current literature",
+        "Further analysis needed to determine hypothesis validity",
         "Requires additional empirical data for validation"
     ]
 
@@ -147,29 +276,36 @@ def fallback_analysis(hypothesis, papers):
         "confidence": confidence,
         "findings": findings,
         "evidence_count": evidence_count,
-        "methodology": "heuristic_literature_analysis_v1",
-        "concerns": ["Fallback analysis - Ollama unavailable"]
+        "methodology": "heuristic_multi_source_v1",
+        "concerns": ["Fallback analysis - Ollama unavailable"],
+        "sources_searched": sources_used
     }
 
 
 def conduct_research(task):
     """
-    Real research function - searches arXiv and analyzes with LLM
+    Research function - searches domain-appropriate sources and analyzes with LLM
     """
-    hypothesis = task.get("payload", {}).get("hypothesis", "Unknown hypothesis")
+    payload = task.get("payload", {})
+    hypothesis = payload.get("hypothesis", "Unknown hypothesis")
+    domain = payload.get("domain", "unknown")
+    search_terms = payload.get("search_terms", hypothesis[:100])
+    sources = payload.get("sources", ["semantic_scholar"])  # Default fallback
 
-    print(f"  → Searching arXiv for: '{hypothesis[:60]}...'")
+    print(f"  → Domain: {domain}")
+    print(f"  → Search terms: {search_terms[:60]}...")
+    print(f"  → Sources to search: {sources}")
 
-    # Search arXiv for relevant papers
-    papers = search_arxiv(hypothesis, max_results=10)
+    # Search papers from domain-appropriate sources
+    papers = search_papers(search_terms, sources, max_per_source=5)
 
-    print(f"  → Found {len(papers)} relevant papers")
+    print(f"  → Total papers found: {len(papers)}")
     if papers:
-        print(f"  → Top result: {papers[0]['title'][:60]}...")
+        print(f"  → Top result [{papers[0].get('source', '?')}]: {papers[0]['title'][:50]}...")
 
     # Analyze with Ollama
     print(f"  → Analyzing with Ollama ({OLLAMA_MODEL})...")
-    analysis = analyze_with_llm(hypothesis, papers)
+    analysis = analyze_with_llm(hypothesis, papers, domain)
 
     # Ensure required fields exist (Ollama may return malformed JSON)
     if "findings" not in analysis:
@@ -182,16 +318,56 @@ def conduct_research(task):
         analysis["concerns"] = []
     if "methodology" not in analysis:
         analysis["methodology"] = "unknown"
+    if "sources_searched" not in analysis:
+        analysis["sources_searched"] = sources
 
-    # Add paper references to findings
+    # Add top paper reference to findings
     if papers:
-        analysis["findings"].append(f"Top paper: {papers[0]['title']} ({papers[0]['arxiv_id']})")
+        top = papers[0]
+        analysis["findings"].append(f"Top paper [{top.get('source', '?')}]: {top['title'][:80]} ({top.get('id', 'N/A')})")
+
+    # Add domain info
+    analysis["domain"] = domain
 
     return analysis
 
 
+# Track cancelled tasks
+cancelled_tasks = set()
+
+
+def cancellation_listener():
+    """Background thread to listen for task cancellation signals"""
+    import threading
+
+    for attempt in range(30):
+        try:
+            cancel_consumer = KafkaConsumer(
+                "research.cancel",
+                bootstrap_servers=KAFKA,
+                auto_offset_reset="latest",  # Only get new cancellations
+                group_id="agent-runner-cancel",
+                value_deserializer=lambda m: json.loads(m.decode('utf-8'))
+            )
+            print("Cancellation listener connected")
+
+            for msg in cancel_consumer:
+                task_id = msg.value.get("task_id")
+                if task_id:
+                    cancelled_tasks.add(task_id)
+                    print(f"  ⚠ Task {task_id[:8]}... cancelled")
+            break
+        except Exception as e:
+            print(f"Cancellation listener error: {e}")
+            time.sleep(2)
+
+
 def main():
     print("Agent Runner starting...")
+
+    # Start cancellation listener in background
+    import threading
+    threading.Thread(target=cancellation_listener, daemon=True).start()
 
     consumer = wait_for_kafka()
     producer = create_producer()
@@ -208,6 +384,11 @@ def main():
         task_id = task.get("task_id", "unknown")
         swarm_id = task.get("swarm_id", "unknown")
         hypothesis = task.get("payload", {}).get("hypothesis", "No hypothesis")
+
+        # Check if task was cancelled
+        if task_id in cancelled_tasks:
+            print(f"\n[Task {task_count}] SKIPPED (cancelled): {task_id[:8]}...")
+            continue
 
         print(f"\n[Task {task_count}] Received: {hypothesis[:60]}...")
         print(f"  → task_id: {task_id}")

@@ -321,9 +321,43 @@ def evaluate_result(result_msg):
     return evaluate_with_llm(result_msg)
 
 
+# Track cancelled tasks
+cancelled_tasks = set()
+
+
+def cancellation_listener():
+    """Background thread to listen for task cancellation signals"""
+    import threading
+
+    for attempt in range(30):
+        try:
+            cancel_consumer = KafkaConsumer(
+                "research.cancel",
+                bootstrap_servers=KAFKA,
+                auto_offset_reset="latest",
+                group_id="critic-cancel",
+                value_deserializer=lambda m: json.loads(m.decode('utf-8'))
+            )
+            print("Cancellation listener connected")
+
+            for msg in cancel_consumer:
+                task_id = msg.value.get("task_id")
+                if task_id:
+                    cancelled_tasks.add(task_id)
+                    print(f"  ⚠ Task {task_id[:8]}... cancelled")
+            break
+        except Exception as e:
+            print(f"Cancellation listener error: {e}")
+            time.sleep(2)
+
+
 def main():
     print("Crustafarian Critic starting...")
     print("Evaluating research against the Sacred Precepts...")
+
+    # Start cancellation listener in background
+    import threading
+    threading.Thread(target=cancellation_listener, daemon=True).start()
 
     consumer = wait_for_kafka()
     producer = create_producer()
@@ -338,6 +372,12 @@ def main():
         critique_count += 1
 
         task_id = result_msg.get("task_id", "unknown")
+
+        # Check if task was cancelled
+        if task_id in cancelled_tasks:
+            print(f"\n[Critique {critique_count}] SKIPPED (cancelled): {task_id[:8]}...")
+            continue
+
         swarm_id = result_msg.get("swarm_id", "unknown")
         agent_id = result_msg.get("agent_id", "unknown")
         confidence = result_msg.get("confidence", 0.0)
