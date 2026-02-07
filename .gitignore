@@ -1,8 +1,7 @@
-/publications/
-/data/kafka/
-/ollama-models/
-/data/minio/
-/data/postgres/
+publications/
+data/
+infra/
+ollama-models/
 /.env
-/node_modules/
+node_modules/
 
