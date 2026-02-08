@@ -20,11 +20,9 @@ from collections import defaultdict
 from kafka import KafkaAdminClient, KafkaProducer, KafkaConsumer
 from kafka.admin import NewTopic
 from kafka.errors import NoBrokersAvailable
-import ollama
+import re
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-OLLAMA_MODEL = "phi3:mini"
 
 MAX_ITERATIONS = 3
 CRITIQUES_FOR_CONSENSUS = 2
@@ -133,49 +131,97 @@ def log_audit(producer, task_id, action, details, iteration=None):
     print(f"  [AUDIT] {action}: {str(details)[:80]}...")
 
 
-# ============== OLLAMA INTEGRATION ==============
+# ============== SEARCH TERM REFINEMENT ==============
+
+# Common stop words to filter out
+STOP_WORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "shall",
+    "can", "need", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into",
+    "through", "during", "before", "after", "above", "below", "between", "under", "again",
+    "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "each",
+    "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same",
+    "so", "than", "too", "very", "just", "and", "but", "if", "or", "because", "until", "while",
+    "this", "that", "these", "those", "it", "its", "they", "their", "them", "we", "our", "you",
+    "your", "he", "she", "him", "her", "his", "what", "which", "who", "whom", "whose", "whether",
+    "both", "either", "neither", "also", "any", "many", "much", "hypothesis", "research", "study"
+}
+
+# Domain-specific alternative terms
+DOMAIN_ALTERNATIVES = {
+    "biology": ["molecular", "cellular", "genomic", "proteomic", "evolutionary", "ecological"],
+    "medical": ["clinical", "therapeutic", "pathological", "epidemiological", "diagnostic"],
+    "physics": ["quantum", "relativistic", "thermodynamic", "electromagnetic", "cosmological"],
+    "chemistry": ["molecular", "organic", "inorganic", "catalytic", "synthetic"],
+    "computer_science": ["computational", "algorithmic", "neural", "statistical", "distributed"],
+    "economics": ["macroeconomic", "microeconomic", "monetary", "fiscal", "behavioral"],
+    "engineering": ["mechanical", "electrical", "structural", "thermal", "systems"],
+    "earth_science": ["geological", "atmospheric", "oceanic", "climatic", "environmental"],
+    "mathematics": ["theoretical", "computational", "probabilistic", "statistical", "topological"]
+}
+
 
 def refine_search_terms(hypothesis, domain, previous_terms, critic_concerns):
-    """Use Ollama to generate refined search terms based on critic feedback"""
-    try:
-        client = ollama.Client(host=OLLAMA_HOST)
+    """Generate refined search terms based on critic feedback using heuristics"""
 
-        concerns_text = "\n".join([f"- {c}" for c in critic_concerns[:5]])
-        previous_terms_text = ", ".join(previous_terms) if previous_terms else "None"
+    # Extract words from hypothesis
+    text = re.sub(r'[^\w\s\-]', ' ', hypothesis)
+    words = text.split()
 
-        prompt = f"""You are a research methodology expert. A hypothesis failed to reach consensus and needs refined search terms.
+    # Get all previously used terms as a set
+    used_terms = set()
+    for prev in previous_terms:
+        for term in prev.lower().split(","):
+            used_terms.add(term.strip())
 
-HYPOTHESIS: {hypothesis}
-DOMAIN: {domain}
+    # Find candidate terms not yet used
+    candidates = []
+    for word in words:
+        word_lower = word.lower()
+        if word_lower not in STOP_WORDS and len(word) > 4 and word_lower not in used_terms:
+            candidates.append(word_lower)
 
-PREVIOUS SEARCH TERMS (didn't work well):
-{previous_terms_text}
+    # Add domain-specific alternative terms
+    domain_alts = DOMAIN_ALTERNATIVES.get(domain, [])
+    for alt in domain_alts:
+        if alt not in used_terms:
+            candidates.append(alt)
 
-CRITIC CONCERNS:
-{concerns_text}
+    # Add terms based on critic concerns
+    concern_keywords = []
+    for concern in critic_concerns[:5]:
+        concern_text = str(concern).lower()
+        if "evidence" in concern_text:
+            concern_keywords.extend(["meta-analysis", "systematic review", "empirical"])
+        if "reproducib" in concern_text:
+            concern_keywords.extend(["replication", "methodology", "protocol"])
+        if "external" in concern_text:
+            concern_keywords.extend(["independent", "validation", "verification"])
+        if "overconfiden" in concern_text:
+            concern_keywords.extend(["limitations", "uncertainty", "caveats"])
 
-Generate NEW search terms that:
-1. Address the critic's specific concerns
-2. Are different from previous attempts
-3. May find supporting OR contradicting evidence
-4. Use alternative scientific terminology
-5. Focus on testable aspects of the hypothesis
+    # Remove duplicates and already used
+    for kw in concern_keywords:
+        if kw not in used_terms:
+            candidates.append(kw)
 
-Return ONLY a comma-separated list of 4-6 search terms. No explanation."""
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_candidates = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
 
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
+    # Take top 5 candidates
+    new_terms = ", ".join(unique_candidates[:5])
 
-        new_terms = response['message']['content'].strip()
-        print(f"  → Refined search terms: {new_terms[:60]}...")
-        return new_terms
+    # Fallback if we couldn't generate anything new
+    if not new_terms:
+        new_terms = f"{domain} alternative evidence contradicting supporting"
 
-    except Exception as e:
-        print(f"  ⚠ Ollama refinement error: {e}")
-        # Fallback: slightly modify the hypothesis as search terms
-        return hypothesis[:100] + " alternative evidence"
+    print(f"  → Refined search terms: {new_terms[:60]}...")
+    return new_terms
 
 
 # ============== CRUSTAFARIAN PRECEPTS ==============
@@ -562,7 +608,6 @@ def main():
     print("=" * 60)
     print(f"Max iterations: {MAX_ITERATIONS}")
     print(f"Critiques for consensus: {CRITIQUES_FOR_CONSENSUS}")
-    print(f"Ollama model: {OLLAMA_MODEL}")
     print("=" * 60)
 
     # Ensure topics exist
@@ -575,8 +620,7 @@ def main():
     # Log startup
     log_audit(producer, "SYSTEM", "ORCHESTRATOR_STARTED", {
         "max_iterations": MAX_ITERATIONS,
-        "critiques_for_consensus": CRITIQUES_FOR_CONSENSUS,
-        "ollama_model": OLLAMA_MODEL
+        "critiques_for_consensus": CRITIQUES_FOR_CONSENSUS
     })
 
     # Start background threads

@@ -1,5 +1,8 @@
 kafka-python
-psycopg2-binary
 requests
 arxiv
-ollama
+numpy>=1.24.0
+# CPU-only PyTorch (much smaller than full CUDA version)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+sentence-transformers>=2.2.0

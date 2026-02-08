@@ -10,19 +10,24 @@ import time
 import uuid
 import glob
 import threading
+import re
+import numpy as np
 from datetime import datetime
 from flask import Flask, render_template_string, request, redirect, url_for, send_from_directory, session
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
-import ollama
+from sentence_transformers import SentenceTransformer
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "hypothesis-manager-secret-key")
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-OLLAMA_MODEL = "phi3:mini"
 PUBLICATIONS_DIR = "/app/publications"
+
+# Load sentence transformer model (small, fast, ~22MB)
+print("Loading sentence transformer model...")
+EMBEDDING_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
+print("Model loaded!")
 
 # Research domains and their descriptions
 RESEARCH_DOMAINS = {
@@ -78,77 +83,117 @@ RESEARCH_DOMAINS = {
     }
 }
 
+# Rich domain descriptions for semantic matching
+DOMAIN_DESCRIPTIONS = {
+    "biology": "Genetics, DNA, RNA, proteins, cells, organisms, evolution, mutation, bacteria, viruses, enzymes, chromosomes, genomes, ecology, ecosystems, biodiversity, metabolism, stem cells, telomeres, mitochondria, cell biology, molecular biology, microbiology",
+    "medical": "Medicine, patients, diseases, treatments, therapy, drugs, clinical trials, diagnosis, symptoms, cancer, tumors, infections, pharmaceuticals, vaccines, antibodies, inflammation, pathology, epidemiology, public health, mortality, healthcare",
+    "physics": "Quantum mechanics, particles, waves, photons, electrons, protons, neutrons, atoms, energy, mass, gravity, relativity, spacetime, black holes, dark matter, dark energy, cosmology, universe, galaxies, stars, quarks, bosons, thermodynamics, electromagnetism",
+    "chemistry": "Molecules, compounds, chemical reactions, catalysts, bonds, organic chemistry, inorganic chemistry, synthesis, polymers, ions, acids, bases, oxidation, reduction, solvents, solutions, crystalline structures, nanoparticles, materials science",
+    "computer_science": "Algorithms, neural networks, machine learning, artificial intelligence, deep learning, data science, databases, software engineering, computing, programming, optimization, classification, natural language processing, computer vision, robotics, cybersecurity, encryption",
+    "economics": "Markets, economic theory, prices, supply and demand, trade, GDP, inflation, monetary policy, fiscal policy, investment, capital, labor markets, unemployment, economic growth, recession, macroeconomics, microeconomics, finance",
+    "engineering": "Design, systems engineering, mechanical engineering, electrical engineering, circuits, structural analysis, materials, load bearing, stress analysis, efficiency, power systems, voltage, aerospace engineering, thermal systems, civil engineering",
+    "earth_science": "Climate science, weather, atmosphere, oceans, geology, earthquakes, volcanoes, sediments, erosion, glaciers, ice sheets, carbon cycle, emissions, temperature, precipitation, fossils, minerals, plate tectonics, environmental science",
+    "mathematics": "Theorems, proofs, equations, functions, variables, matrices, vectors, integrals, derivatives, probability theory, statistics, topology, algebra, geometry, calculus, convergence, infinite series, number theory, mathematical analysis"
+}
+
+# Pre-compute domain embeddings at startup
+print("Computing domain embeddings...")
+DOMAIN_EMBEDDINGS = {}
+for domain, description in DOMAIN_DESCRIPTIONS.items():
+    DOMAIN_EMBEDDINGS[domain] = EMBEDDING_MODEL.encode(description, normalize_embeddings=True)
+print(f"Computed embeddings for {len(DOMAIN_EMBEDDINGS)} domains")
+
+# Common stop words to filter out
+STOP_WORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "shall",
+    "can", "need", "dare", "ought", "used", "to", "of", "in", "for", "on", "with", "at", "by",
+    "from", "as", "into", "through", "during", "before", "after", "above", "below", "between",
+    "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how",
+    "all", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only",
+    "own", "same", "so", "than", "too", "very", "just", "and", "but", "if", "or", "because",
+    "until", "while", "this", "that", "these", "those", "it", "its", "they", "their", "them",
+    "we", "our", "you", "your", "he", "she", "him", "her", "his", "what", "which", "who",
+    "whom", "whose", "whether", "both", "either", "neither", "also", "any", "many", "much"
+}
+
+
 def detect_domain(hypothesis):
-    """Use Ollama to detect the research domain of a hypothesis"""
-    try:
-        client = ollama.Client(host=OLLAMA_HOST)
+    """Semantic domain detection using sentence embeddings"""
+    # Embed the hypothesis
+    hypothesis_embedding = EMBEDDING_MODEL.encode(hypothesis, normalize_embeddings=True)
 
-        domain_list = "\n".join([
-            f"- {key}: {info['description']}"
-            for key, info in RESEARCH_DOMAINS.items()
-            if key != "unknown"
-        ])
+    # Compute cosine similarity with each domain (dot product since normalized)
+    similarities = {}
+    for domain, domain_embedding in DOMAIN_EMBEDDINGS.items():
+        similarity = np.dot(hypothesis_embedding, domain_embedding)
+        similarities[domain] = float(similarity)
 
-        prompt = f"""Classify this research hypothesis into ONE domain.
+    # Find the best matching domain
+    best_domain = max(similarities, key=similarities.get)
+    best_score = similarities[best_domain]
 
-HYPOTHESIS: {hypothesis}
-
-AVAILABLE DOMAINS:
-{domain_list}
-
-Rules:
-- Pick the SINGLE most appropriate domain
-- If truly unclear or spans multiple domains equally, respond "unknown"
-- Respond with ONLY the domain key (e.g., "biology", "physics", "unknown")
-
-Domain:"""
-
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        domain = response['message']['content'].strip().lower()
-        # Clean up response - extract just the domain key
-        for key in RESEARCH_DOMAINS.keys():
-            if key in domain:
-                return key
-
+    # If similarity is too low, return unknown
+    if best_score < 0.3:
+        print(f"Domain detection: unknown (best was {best_domain} at {best_score:.3f})")
         return "unknown"
 
-    except Exception as e:
-        print(f"Domain detection error: {e}")
-        return "unknown"
+    print(f"Domain detection: {best_domain} (similarity: {best_score:.3f})")
+    return best_domain
+
 
 def extract_search_terms(hypothesis, domain):
-    """Use Ollama to extract key search terms from hypothesis"""
-    try:
-        client = ollama.Client(host=OLLAMA_HOST)
+    """Extract search terms using semantic similarity to domain"""
+    # Remove punctuation except hyphens
+    text = re.sub(r'[^\w\s\-]', ' ', hypothesis)
+    words = text.split()
 
-        prompt = f"""Extract 3-5 key scientific search terms from this {domain} hypothesis.
+    # Filter out stop words and short words
+    candidates = []
+    i = 0
+    while i < len(words):
+        word = words[i]
+        word_lower = word.lower()
 
-HYPOTHESIS: {hypothesis}
+        if word_lower in STOP_WORDS or len(word) < 3:
+            i += 1
+            continue
 
-Rules:
-- Extract specific scientific/technical terms
-- Avoid common words like "the", "is", "may"
-- Focus on nouns and technical concepts
-- Return as comma-separated list
+        # Check for two-word phrases
+        if i + 1 < len(words) and words[i + 1].lower() not in STOP_WORDS:
+            phrase = f"{word} {words[i + 1]}"
+            candidates.append(phrase.lower())
+            i += 2
+            continue
 
-Search terms:"""
+        if len(word) > 4:  # Only words longer than 4 chars
+            candidates.append(word_lower)
+        i += 1
 
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
+    # If we have candidates, rank them by similarity to domain description
+    if candidates and domain in DOMAIN_DESCRIPTIONS:
+        domain_embedding = DOMAIN_EMBEDDINGS.get(domain)
+        if domain_embedding is not None:
+            # Embed all candidates at once for efficiency
+            candidate_embeddings = EMBEDDING_MODEL.encode(candidates, normalize_embeddings=True)
 
-        terms = response['message']['content'].strip()
-        return terms
+            # Score each candidate by similarity to domain
+            scored = []
+            for i, candidate in enumerate(candidates):
+                similarity = np.dot(candidate_embeddings[i], domain_embedding)
+                scored.append((candidate, similarity))
 
-    except Exception as e:
-        print(f"Search term extraction error: {e}")
-        # Fallback: just use first 100 chars of hypothesis
-        return hypothesis[:100]
+            # Sort by similarity and take top 5
+            scored.sort(key=lambda x: x[1], reverse=True)
+            terms = [term for term, _ in scored[:5]]
+        else:
+            terms = candidates[:5]
+    else:
+        terms = candidates[:5] if candidates else [hypothesis[:100]]
+
+    result = ", ".join(terms)
+    print(f"Search terms: {result}")
+    return result
 
 # In-memory hypothesis tracking
 hypotheses = {}  # task_id -> hypothesis data
@@ -823,8 +868,8 @@ Example: Galaxy rotation curve anomalies may be explainable without non-baryonic
                     return; // Let browser validation handle empty input
                 }
 
-                // Disable inputs
-                textarea.disabled = true;
+                // Disable inputs (use readOnly for textarea so value still submits)
+                textarea.readOnly = true;
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Submitting...';
 

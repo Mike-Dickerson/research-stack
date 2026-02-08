@@ -1,7 +1,12 @@
 publications/
 data/
 infra/
-ollama-models/models/blobs/
+ollama-models/
 /.env
 node_modules/
+
+# Model caches (if running locally)
+.cache/
+__pycache__/
+*.pyc
 

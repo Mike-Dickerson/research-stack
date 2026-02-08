@@ -1,0 +1,33 @@
+# Auto detect text files and normalize line endings
+* text=auto
+
+# Python files - always LF
+*.py text eol=lf
+
+# Shell scripts - always LF (critical for Docker)
+*.sh text eol=lf
+
+# Docker files
+Dockerfile text eol=lf
+
+# Config files
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+
+# Requirements files
+requirements.txt text eol=lf
+
+# Ensure Windows batch files use CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files - don't touch
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
