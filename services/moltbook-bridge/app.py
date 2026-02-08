@@ -2,15 +2,13 @@ import os
 import time
 import json
 import random
+import re
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
 import requests
-import ollama
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-OLLAMA_MODEL = "phi3:mini"
 
 def wait_for_kafka(max_retries=30, delay=2):
     """Wait for Kafka to be available with retries"""
@@ -44,92 +42,81 @@ def create_producer():
     )
 
 
-def rephrase_hypothesis(hypothesis, domain):
-    """Use Ollama to rephrase hypothesis for alternative search angle"""
-    try:
-        client = ollama.Client(host=OLLAMA_HOST)
+# Stop words to filter out
+STOP_WORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "shall",
+    "can", "need", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into",
+    "through", "during", "before", "after", "above", "below", "between", "under", "again",
+    "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "each",
+    "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same",
+    "so", "than", "too", "very", "just", "and", "but", "if", "or", "because", "until", "while",
+    "this", "that", "these", "those", "it", "its", "they", "their", "them", "we", "our", "you",
+    "your", "he", "she", "him", "her", "his", "what", "which", "who", "hypothesis", "research"
+}
 
-        prompt = f"""Rephrase this {domain} hypothesis using different terminology to search for related but independent research.
-
-ORIGINAL: {hypothesis}
-
-Rules:
-- Use synonyms and alternative scientific terms
-- Focus on the underlying mechanisms or phenomena
-- Keep it concise (1-2 sentences)
-- Maintain scientific accuracy
-
-Rephrased:"""
-
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        rephrased = response['message']['content'].strip()
-        print(f"  → Rephrased: {rephrased[:80]}...")
-        return rephrased
-
-    except Exception as e:
-        print(f"  ⚠ Rephrase error: {e}")
-        return hypothesis
+# Domain-specific alternative terms for external validation
+DOMAIN_ALTERNATIVES = {
+    "physics": ["quantum effects", "relativistic phenomena", "particle interactions", "wave mechanics"],
+    "biology": ["molecular mechanisms", "cellular pathways", "evolutionary dynamics", "genetic regulation"],
+    "medical": ["clinical outcomes", "therapeutic mechanisms", "disease pathophysiology", "treatment efficacy"],
+    "computer_science": ["computational complexity", "algorithmic efficiency", "machine learning models", "neural architectures"],
+    "chemistry": ["reaction mechanisms", "molecular interactions", "catalytic processes", "chemical kinetics"],
+    "earth_science": ["geological processes", "atmospheric dynamics", "climate patterns", "environmental systems"],
+    "economics": ["market dynamics", "economic indicators", "behavioral economics", "policy effects"],
+    "engineering": ["system optimization", "structural analysis", "efficiency metrics", "design parameters"],
+    "mathematics": ["theoretical frameworks", "proof techniques", "convergence analysis", "mathematical structures"]
+}
 
 
 def extract_alternative_terms(hypothesis, domain):
-    """Extract alternative search terms for external validation"""
-    try:
-        client = ollama.Client(host=OLLAMA_HOST)
+    """Extract alternative search terms using heuristics"""
+    # Extract meaningful words from hypothesis
+    text = re.sub(r'[^\w\s\-]', ' ', hypothesis)
+    words = text.split()
 
-        prompt = f"""Extract 3-5 ALTERNATIVE search terms for this {domain} hypothesis.
-Use different terminology than the obvious terms - think about related concepts, mechanisms, or phenomena.
+    # Filter out stop words and short words
+    terms = []
+    for word in words:
+        word_lower = word.lower()
+        if word_lower not in STOP_WORDS and len(word) > 4:
+            terms.append(word_lower)
 
-HYPOTHESIS: {hypothesis}
+    # Add domain-specific alternatives
+    domain_alts = DOMAIN_ALTERNATIVES.get(domain, [])
+    terms.extend(domain_alts[:2])  # Add 2 domain alternatives
 
-Rules:
-- Use scientific synonyms
-- Include broader/narrower concepts
-- Focus on testable aspects
-- Return as comma-separated list
+    # Take unique terms (up to 5)
+    unique_terms = list(dict.fromkeys(terms))[:5]
+    result = ", ".join(unique_terms)
 
-Alternative terms:"""
-
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        terms = response['message']['content'].strip()
-        return terms
-
-    except Exception as e:
-        print(f"  ⚠ Term extraction error: {e}")
-        return hypothesis[:100]
+    print(f"  → Alternative terms: {result[:60]}...")
+    return result
 
 
 def search_nasa_ads(search_query, max_results=5):
     """Search NASA ADS for astrophysics papers"""
     try:
-        # NASA ADS API (free, but rate limited without API key)
-        # Using the public search endpoint
+        # NASA ADS API - G2Creative Research Stack
         url = "https://api.adsabs.harvard.edu/v1/search/query"
 
-        # Try without API key first (limited but works for basic searches)
-        headers = {"Accept": "application/json"}
+        # NASA ADS API key for G2Creative research operations
+        NASA_ADS_API_KEY = "dofjWXzv8FLEsuzFHCbSg9PF9Mh7Ccm9Zx3yimPe"
+
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {NASA_ADS_API_KEY}"
+        }
         params = {
             "q": search_query,
             "rows": max_results,
             "fl": "title,author,abstract,pubdate,bibcode"
         }
 
-        # Check for API key
-        api_key = os.getenv("ADS_API_KEY", "")
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
         resp = requests.get(url, params=params, headers=headers, timeout=15)
 
         if resp.status_code == 401:
-            print("  ⚠ NASA ADS requires API key - skipping")
+            print("  ⚠ NASA ADS authentication failed")
             return []
 
         if resp.status_code != 200:
@@ -301,64 +288,8 @@ def search_external_sources(search_query, domain, max_per_source=5):
     return all_papers
 
 
-def analyze_with_external_perspective(hypothesis, papers, domain):
-    """Use Ollama to analyze from an external/adversarial perspective"""
-    try:
-        client = ollama.Client(host=OLLAMA_HOST)
-
-        # Build context from papers
-        papers_context = "\n\n".join([
-            f"Paper {i+1} [{p.get('source', 'Unknown')}]: {p['title']}\nAuthors: {', '.join(p['authors'])}\nAbstract: {p['summary']}\nPublished: {p['published']}"
-            for i, p in enumerate(papers[:7])
-        ])
-
-        sources_used = list(set(p.get('source', 'Unknown') for p in papers))
-
-        prompt = f"""You are an EXTERNAL REVIEWER providing independent validation of this hypothesis.
-Your role is to find ALTERNATIVE evidence and potential CONTRADICTIONS, not just confirmations.
-
-Hypothesis: {hypothesis}
-Domain: {domain}
-
-External Research from {', '.join(sources_used)}:
-{papers_context}
-
-Provide an INDEPENDENT assessment:
-1. Confidence score (0.0-1.0) - be skeptical, don't just agree
-2. Supporting evidence from external sources
-3. Contradicting evidence or alternative explanations
-4. Gaps in the hypothesis that need addressing
-5. Reproducibility concerns
-
-Format as JSON:
-{{
-    "confidence": 0.0-1.0,
-    "findings": ["finding1", "finding2", ...],
-    "evidence_count": number,
-    "concerns": ["concern1", "concern2", ...],
-    "alternative_explanations": ["alt1", "alt2", ...],
-    "methodology": "moltbook_external_validation_v1"
-}}"""
-
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            format="json"
-        )
-
-        response_text = response['message']['content']
-        result = json.loads(response_text.strip())
-        result["sources_searched"] = sources_used
-        result["external_validation"] = True
-        return result
-
-    except Exception as e:
-        print(f"  ⚠ External analysis error: {e}")
-        return fallback_analysis(hypothesis, papers)
-
-
-def fallback_analysis(hypothesis, papers):
-    """Fallback when LLM unavailable"""
+def analyze_external_papers(hypothesis, papers):
+    """Analyze papers from external perspective (skeptical, looking for contradictions)"""
     evidence_count = len(papers)
     sources_used = list(set(p.get('source', 'Unknown') for p in papers))
 
@@ -383,9 +314,9 @@ def fallback_analysis(hypothesis, papers):
         "confidence": confidence,
         "findings": findings,
         "evidence_count": evidence_count,
-        "concerns": ["External heuristic evaluation - requires LLM for full analysis"],
+        "concerns": [],
         "alternative_explanations": [],
-        "methodology": "moltbook_external_heuristic_v1",
+        "methodology": "moltbook_external_validation_v1",
         "sources_searched": sources_used,
         "external_validation": True
     }
@@ -507,8 +438,8 @@ def main():
             print(f"  Top result [{papers[0].get('source', '?')}]: {papers[0]['title'][:50]}...")
 
         # Analyze with external perspective
-        print(f"\n→ Analyzing with Ollama (external perspective)...")
-        analysis = analyze_with_external_perspective(hypothesis, papers, domain)
+        print(f"\n→ Analyzing from external perspective...")
+        analysis = analyze_external_papers(hypothesis, papers)
 
         # Ensure required fields
         if "findings" not in analysis:

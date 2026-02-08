@@ -2,16 +2,20 @@ import os
 import time
 import json
 import random
+import numpy as np
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
+from sentence_transformers import SentenceTransformer
 import arxiv
 import requests
-import ollama
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-OLLAMA_MODEL = "phi3:mini"  # Small, fast 3.8B parameter model
+
+# Load sentence transformer model at startup
+print("Loading sentence transformer model...")
+EMBEDDING_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
+print("Model loaded!")
 
 def wait_for_kafka(max_retries=30, delay=2):
     """Wait for Kafka to be available with retries"""
@@ -48,6 +52,7 @@ def create_producer():
 def search_arxiv(search_query, max_results=10):
     """Search arXiv for relevant papers"""
     try:
+        client = arxiv.Client()
         search = arxiv.Search(
             query=search_query,
             max_results=max_results,
@@ -55,7 +60,7 @@ def search_arxiv(search_query, max_results=10):
         )
 
         papers = []
-        for result in search.results():
+        for result in client.results(search):
             papers.append({
                 "title": result.title,
                 "authors": [author.name for author in result.authors][:3],
@@ -195,90 +200,70 @@ def search_papers(search_query, sources, max_per_source=5):
     return all_papers
 
 
-def analyze_with_llm(hypothesis, papers, domain="unknown"):
-    """Use Ollama (local SLM) to analyze hypothesis against research papers"""
-    try:
-        # Build context from papers with source info
-        papers_context = "\n\n".join([
-            f"Paper {i+1} [{p.get('source', 'Unknown')}]: {p['title']}\nAuthors: {', '.join(p['authors'])}\nAbstract: {p['summary']}\nPublished: {p['published']}"
-            for i, p in enumerate(papers[:7])  # Use top 7 papers
-        ])
-
-        # Get sources used
-        sources_used = list(set(p.get('source', 'Unknown') for p in papers))
-
-        prompt = f"""You are a scientific research analyst specializing in {domain}. Analyze this hypothesis against the provided research papers.
-
-IMPORTANT: Only discuss findings that are DIRECTLY relevant to the hypothesis. Do not mention unrelated topics.
-
-Hypothesis: {hypothesis}
-Research Domain: {domain}
-
-Research Papers from {', '.join(sources_used)}:
-{papers_context}
-
-Provide:
-1. A confidence score (0.0-1.0) for how well the hypothesis is supported by existing research
-2. Key findings (3-5 bullet points) - ONLY findings directly relevant to the hypothesis
-3. Evidence count (number of relevant supporting papers found)
-4. Any concerns or contradictions with the hypothesis specifically
-
-Format your response as JSON:
-{{
-    "confidence": 0.0-1.0,
-    "findings": ["finding1", "finding2", ...],
-    "evidence_count": number,
-    "concerns": ["concern1", "concern2", ...],
-    "methodology": "ollama_phi3_multi_source_v1"
-}}"""
-
-        # Call Ollama
-        client = ollama.Client(host=OLLAMA_HOST)
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            format="json"
-        )
-
-        # Parse JSON response
-        response_text = response['message']['content']
-        result = json.loads(response_text.strip())
-        result["sources_searched"] = sources_used
-        return result
-
-    except Exception as e:
-        print(f"  ⚠ Ollama analysis error: {e}")
-        print(f"  → Falling back to heuristic analysis")
-        return fallback_analysis(hypothesis, papers)
-
-
-def fallback_analysis(hypothesis, papers):
-    """Fallback analysis when LLM is unavailable"""
+def analyze_papers(hypothesis, papers):
+    """Semantic analysis of papers against hypothesis using embeddings"""
     evidence_count = len(papers)
     sources_used = list(set(p.get('source', 'Unknown') for p in papers))
 
-    # Base confidence on number of papers found
-    if evidence_count >= 8:
-        confidence = round(random.uniform(0.65, 0.85), 2)
-    elif evidence_count >= 4:
-        confidence = round(random.uniform(0.50, 0.75), 2)
-    else:
-        confidence = round(random.uniform(0.35, 0.60), 2)
+    if not papers:
+        return {
+            "confidence": 0.25,
+            "findings": ["No relevant papers found"],
+            "evidence_count": 0,
+            "methodology": "semantic_analysis_v1",
+            "concerns": ["Insufficient evidence for hypothesis"],
+            "sources_searched": sources_used
+        }
 
-    findings = [
-        f"Found {evidence_count} relevant papers from {', '.join(sources_used)}",
-        f"Most recent research published: {papers[0]['published'] if papers else 'N/A'}",
-        "Further analysis needed to determine hypothesis validity",
-        "Requires additional empirical data for validation"
-    ]
+    # Embed the hypothesis
+    hypothesis_embedding = EMBEDDING_MODEL.encode(hypothesis, normalize_embeddings=True)
+
+    # Embed each paper (title + summary) and compute similarity
+    paper_texts = [f"{p['title']}. {p['summary']}" for p in papers]
+    paper_embeddings = EMBEDDING_MODEL.encode(paper_texts, normalize_embeddings=True)
+
+    # Compute cosine similarities (dot product since normalized)
+    similarities = [float(np.dot(hypothesis_embedding, emb)) for emb in paper_embeddings]
+
+    # Rank papers by relevance
+    ranked_papers = sorted(zip(papers, similarities), key=lambda x: x[1], reverse=True)
+
+    # Compute confidence based on top paper similarities
+    top_similarities = [s for _, s in ranked_papers[:5]]
+    avg_similarity = sum(top_similarities) / len(top_similarities)
+
+    # Map similarity to confidence (0.3-0.7 similarity -> 0.4-0.85 confidence)
+    confidence = min(0.85, max(0.4, avg_similarity * 1.2))
+    confidence = round(confidence, 2)
+
+    # Generate findings from top relevant papers
+    findings = []
+    findings.append(f"Analyzed {evidence_count} papers from {', '.join(sources_used)}")
+
+    # Add top 3 most relevant papers
+    for i, (paper, sim) in enumerate(ranked_papers[:3]):
+        relevance = "highly relevant" if sim > 0.5 else "moderately relevant" if sim > 0.35 else "tangentially relevant"
+        findings.append(f"[{paper['source']}] {paper['title'][:70]}... ({relevance}, {sim:.2f})")
+
+    # Check for potential contradictions (papers with moderate but not high similarity)
+    concerns = []
+    low_sim_papers = [p for p, s in ranked_papers if 0.2 < s < 0.35]
+    if low_sim_papers:
+        concerns.append(f"{len(low_sim_papers)} papers found with tangential relevance - may contain alternative perspectives")
+
+    if avg_similarity < 0.35:
+        concerns.append("Low semantic alignment between hypothesis and existing research")
+
+    print(f"  → Semantic analysis: avg_similarity={avg_similarity:.3f}, confidence={confidence}")
 
     return {
         "confidence": confidence,
         "findings": findings,
         "evidence_count": evidence_count,
-        "methodology": "heuristic_multi_source_v1",
-        "concerns": ["Fallback analysis - Ollama unavailable"],
-        "sources_searched": sources_used
+        "methodology": "semantic_analysis_v1",
+        "concerns": concerns,
+        "sources_searched": sources_used,
+        "top_relevance_score": round(ranked_papers[0][1], 3) if ranked_papers else 0
     }
 
 
@@ -303,9 +288,9 @@ def conduct_research(task):
     if papers:
         print(f"  → Top result [{papers[0].get('source', '?')}]: {papers[0]['title'][:50]}...")
 
-    # Analyze with Ollama
-    print(f"  → Analyzing with Ollama ({OLLAMA_MODEL})...")
-    analysis = analyze_with_llm(hypothesis, papers, domain)
+    # Analyze papers
+    print(f"  → Analyzing papers...")
+    analysis = analyze_papers(hypothesis, papers)
 
     # Ensure required fields exist (Ollama may return malformed JSON)
     if "findings" not in analysis:

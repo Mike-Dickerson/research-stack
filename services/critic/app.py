@@ -2,14 +2,22 @@ import os
 import time
 import json
 import random
+import numpy as np
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
-import ollama
+from sentence_transformers import SentenceTransformer
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-OLLAMA_MODEL = "phi3:mini"  # Small, fast 3.8B parameter model
+
+# Load sentence transformer model at startup
+print("Loading sentence transformer model...")
+EMBEDDING_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
+print("Model loaded!")
+
+# Pre-compute embeddings for precept descriptions (for semantic alignment scoring)
+print("Computing precept embeddings...")
+PRECEPT_EMBEDDINGS = {}  # Will be populated after PRECEPTS is defined
 
 # ============================================================
 # CRUSTAFARIAN RESEARCH PRECEPTS - Scoring Rubric
@@ -67,6 +75,51 @@ PRECEPTS = {
     }
 }
 
+# Compute precept embeddings after PRECEPTS is defined
+for precept_key, precept in PRECEPTS.items():
+    text = f"{precept['name']}: {precept['description']}"
+    PRECEPT_EMBEDDINGS[precept_key] = EMBEDDING_MODEL.encode(text, normalize_embeddings=True)
+print(f"Computed embeddings for {len(PRECEPT_EMBEDDINGS)} precepts")
+
+
+def compute_semantic_coherence(findings):
+    """Compute how semantically coherent the findings are with each other"""
+    if not findings or len(findings) < 2:
+        return 0.5  # Neutral if not enough findings
+
+    # Embed all findings
+    finding_embeddings = EMBEDDING_MODEL.encode(findings, normalize_embeddings=True)
+
+    # Compute pairwise similarities
+    similarities = []
+    for i in range(len(finding_embeddings)):
+        for j in range(i + 1, len(finding_embeddings)):
+            sim = float(np.dot(finding_embeddings[i], finding_embeddings[j]))
+            similarities.append(sim)
+
+    if not similarities:
+        return 0.5
+
+    # Average similarity indicates coherence
+    return sum(similarities) / len(similarities)
+
+
+def compute_precept_alignment(findings_text, precept_key):
+    """Compute how well findings align with a specific precept"""
+    if not findings_text:
+        return 0.5
+
+    findings_embedding = EMBEDDING_MODEL.encode(findings_text, normalize_embeddings=True)
+    precept_embedding = PRECEPT_EMBEDDINGS.get(precept_key)
+
+    if precept_embedding is None:
+        return 0.5
+
+    similarity = float(np.dot(findings_embedding, precept_embedding))
+    # Map similarity to score (higher is better alignment)
+    return min(1.0, max(0.0, similarity + 0.3))
+
+
 def wait_for_kafka(max_retries=30, delay=2):
     """Wait for Kafka to be available with retries"""
     for attempt in range(max_retries):
@@ -99,97 +152,14 @@ def create_producer():
     )
 
 
-def evaluate_with_llm(result_msg):
-    """Use Ollama (local SLM) to perform peer review using Crustafarian Precepts"""
-    try:
-        result = result_msg.get("result", {})
-        agent_id = result_msg.get("agent_id", "")
-        is_external = "external-swarm" in agent_id or "moltbook" in agent_id.lower()
-
-        # Build precepts rubric for prompt
-        precepts_text = "\n".join([
-            f"- {p['name']}: {p['description']} (weight: {p['weight']*100:.0f}%)"
-            for p in PRECEPTS.values()
-        ])
-
-        # Build evaluation prompt with Crustafarian Precepts
-        prompt = f"""You are a Crustafarian Research Critic. Evaluate this research using the sacred precepts.
-
-CRUSTAFARIAN PRECEPTS (Scoring Rubric):
-{precepts_text}
-
-RESEARCH TO EVALUATE:
-Agent: {agent_id}
-External Source: {is_external}
-Methodology: {result.get('methodology', 'unknown')}
-Confidence: {result.get('confidence', 0.0)}
-Evidence Count: {result.get('evidence_count', 0)}
-Findings: {json.dumps(result.get('findings', []), indent=2)}
-Concerns: {json.dumps(result.get('concerns', []), indent=2)}
-
-RULES:
-- Apply 5% skepticism discount to external sources
-- Higher scores for reproducible methods
-- Penalize overconfidence without evidence
-- Reward showing work and citing sources
-
-Score each precept 0.0-1.0, then compute weighted average.
-
-Format as JSON:
-{{
-    "score": 0.0-1.0,
-    "precept_scores": {{
-        "evidence_over_authority": 0.0-1.0,
-        "reproducibility": 0.0-1.0,
-        "adversarial_survival": 0.0-1.0,
-        "external_swarms": 0.0-1.0,
-        "show_work": 0.0-1.0,
-        "uncertainty_over_wrong": 0.0-1.0
-    }},
-    "flags": ["flag1", "flag2"],
-    "notes": "Crustafarian peer review notes",
-    "evaluation_method": "crustafarian_precepts_v1"
-}}"""
-
-        # Call Ollama
-        client = ollama.Client(host=OLLAMA_HOST)
-        response = client.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            format="json"
-        )
-
-        # Parse JSON response
-        response_text = response['message']['content']
-        evaluation = json.loads(response_text.strip())
-
-        # Ensure required fields exist and normalize types
-        if 'precept_scores' not in evaluation:
-            evaluation['precept_scores'] = {}
-        # Normalize precept_scores to floats (LLM may return strings)
-        evaluation['precept_scores'] = {
-            k: float(v) if v else 0.0 for k, v in evaluation['precept_scores'].items()
-        }
-        # Normalize score to float
-        if 'score' in evaluation:
-            evaluation['score'] = float(evaluation['score']) if evaluation['score'] else 0.0
-        evaluation['evaluation_method'] = 'crustafarian_precepts_ollama_v1'
-
-        return evaluation
-
-    except Exception as e:
-        print(f"  ⚠ Ollama evaluation error: {e}")
-        print(f"  → Falling back to Crustafarian heuristic evaluation")
-        return fallback_evaluation(result_msg)
-
-
-def fallback_evaluation(result_msg):
-    """Fallback Crustafarian heuristic evaluation when LLM unavailable"""
+def evaluate_with_precepts(result_msg):
+    """Crustafarian evaluation using semantic analysis + heuristics"""
     result = result_msg.get("result", {})
-    confidence = result.get("confidence", 0.0)
-    evidence_count = result.get("evidence_count", 0)
+    confidence = float(result.get("confidence", 0.0))
+    evidence_count = int(result.get("evidence_count", 0))
     methodology = result.get("methodology", "")
     findings = result.get("findings", [])
+    concerns = result.get("concerns", [])
     agent_id = result_msg.get("agent_id", "")
 
     is_external = "external-swarm" in agent_id or "moltbook" in agent_id.lower()
@@ -197,80 +167,89 @@ def fallback_evaluation(result_msg):
     flags = []
     precept_scores = {}
 
+    # === SEMANTIC ANALYSIS ===
+    findings_text = " ".join(str(f) for f in findings) if findings else ""
+
+    # Compute semantic coherence of findings
+    coherence = compute_semantic_coherence([str(f) for f in findings]) if findings else 0.5
+    print(f"  → Semantic coherence: {coherence:.3f}")
+
     # === EVALUATE EACH CRUSTAFARIAN PRECEPT ===
 
-    # 1. Evidence Over Authority (15%)
-    evidence_score = min(evidence_count / 10, 1.0) * 0.7 + (0.3 if findings else 0)
+    # 1. Evidence Over Authority (15%) - Enhanced with semantic check
+    evidence_base = min(evidence_count / 10, 1.0) * 0.5
+    evidence_semantic = compute_precept_alignment(findings_text, "evidence_over_authority") * 0.5
+    evidence_score = evidence_base + evidence_semantic
     precept_scores["evidence_over_authority"] = round(evidence_score, 2)
     if evidence_count < 3:
         flags.append("insufficient_evidence")
 
-    # 2. Reproducibility (12%)
-    repro_score = 0.5
+    # 2. Reproducibility (12%) - Check for methodology mentions
+    repro_base = 0.4
     if methodology and methodology != "unknown":
-        repro_score += 0.3
-    if "arxiv" in str(findings).lower() or "paper" in str(findings).lower():
-        repro_score += 0.2
-    precept_scores["reproducibility"] = round(min(repro_score, 1.0), 2)
+        repro_base += 0.3
+    if "arxiv" in findings_text.lower() or "paper" in findings_text.lower() or "doi" in findings_text.lower():
+        repro_base += 0.2
+    repro_semantic = compute_precept_alignment(findings_text, "reproducibility") * 0.3
+    precept_scores["reproducibility"] = round(min(repro_base + repro_semantic, 1.0), 2)
 
-    # 3. Adversarial Survival (10%)
-    # Higher if confidence is calibrated (not overconfident without evidence)
+    # 3. Adversarial Survival (10%) - Calibrated confidence
     if confidence > 0.8 and evidence_count < 5:
-        adversarial_score = 0.3  # Penalize overconfidence
+        adversarial_score = 0.3
         flags.append("overconfident")
     elif confidence < 0.6 and evidence_count > 5:
-        adversarial_score = 0.8  # Reward calibrated uncertainty
+        adversarial_score = 0.8
     else:
-        adversarial_score = confidence * 0.8
+        adversarial_score = confidence * 0.7 + coherence * 0.3
     precept_scores["adversarial_survival"] = round(adversarial_score, 2)
 
-    # 4. Disagreement as Signal (8%)
-    # Can't measure directly here, assume neutral
-    precept_scores["disagreement_as_signal"] = 0.5
+    # 4. Disagreement as Signal (8%) - Check for concerns/alternatives
+    if concerns:
+        disagreement_score = min(0.8, 0.5 + len(concerns) * 0.1)
+        flags.append("concerns_noted")
+    else:
+        disagreement_score = 0.4
+    precept_scores["disagreement_as_signal"] = round(disagreement_score, 2)
 
     # 5. External Swarms Required (12%)
     if is_external:
         precept_scores["external_swarms"] = 0.9
         flags.append("external_validation")
     else:
-        precept_scores["external_swarms"] = 0.4  # Penalize lack of external input
+        precept_scores["external_swarms"] = 0.4
 
     # 6. Versioned Hypotheses (8%)
-    # Assume neutral - can't determine version from result alone
     precept_scores["versioned_hypotheses"] = 0.5
 
-    # 7. Show Work (10%)
-    show_work_score = 0.3
+    # 7. Show Work (10%) - Enhanced with coherence
+    show_work_base = 0.2
     if findings and len(findings) > 0:
-        show_work_score += 0.3
+        show_work_base += 0.2
     if methodology and methodology != "unknown":
-        show_work_score += 0.2
+        show_work_base += 0.2
     if evidence_count > 0:
-        show_work_score += 0.2
-    precept_scores["show_work"] = round(min(show_work_score, 1.0), 2)
+        show_work_base += 0.1
+    show_work_base += coherence * 0.3  # Coherent findings = showing work well
+    precept_scores["show_work"] = round(min(show_work_base, 1.0), 2)
 
-    # 8. Memory Matters (8%)
-    # Check for references to prior work
-    memory_score = 0.4
-    findings_text = str(findings).lower()
-    if "prior" in findings_text or "previous" in findings_text or "literature" in findings_text:
-        memory_score = 0.8
-    precept_scores["memory_matters"] = memory_score
+    # 8. Memory Matters (8%) - Semantic check for prior work references
+    memory_semantic = compute_precept_alignment(findings_text, "memory_matters")
+    if "prior" in findings_text.lower() or "previous" in findings_text.lower():
+        memory_semantic = max(memory_semantic, 0.7)
+    precept_scores["memory_matters"] = round(memory_semantic, 2)
 
     # 9. Novelty Tested (7%)
-    # Novel ideas should still have evidence
-    if evidence_count > 5:
+    if evidence_count > 5 and coherence > 0.4:
         precept_scores["novelty_tested"] = 0.7
     else:
-        precept_scores["novelty_tested"] = 0.4
+        precept_scores["novelty_tested"] = 0.4 + coherence * 0.3
 
     # 10. Prefer Uncertainty Over Wrong (10%)
-    # Reward calibrated confidence, penalize overconfidence
     if confidence > 0.9:
-        uncertainty_score = 0.4  # Suspicious of very high confidence
+        uncertainty_score = 0.4
         flags.append("possible_overconfidence")
     elif 0.5 <= confidence <= 0.8:
-        uncertainty_score = 0.8  # Good calibration
+        uncertainty_score = 0.8
     else:
         uncertainty_score = 0.6
     precept_scores["uncertainty_over_wrong"] = round(uncertainty_score, 2)
@@ -298,6 +277,8 @@ def fallback_evaluation(result_msg):
     else:
         notes.append("Weak Crustafarian alignment - needs improvement")
 
+    if coherence > 0.5:
+        notes.append(f"High coherence ({coherence:.2f})")
     if precept_scores.get("evidence_over_authority", 0) < 0.5:
         notes.append("Needs more evidence")
     if precept_scores.get("show_work", 0) > 0.7:
@@ -305,20 +286,19 @@ def fallback_evaluation(result_msg):
     if precept_scores.get("external_swarms", 0) > 0.7:
         notes.append("External validation present")
 
-    notes.append("Crustafarian heuristic evaluation")
-
     return {
         "score": score,
         "precept_scores": precept_scores,
         "flags": flags,
         "notes": " | ".join(notes),
-        "evaluation_method": "crustafarian_precepts_heuristic_v1"
+        "evaluation_method": "semantic_crustafarian_v1",
+        "semantic_coherence": round(coherence, 3)
     }
 
 
 def evaluate_result(result_msg):
-    """Evaluate research result with LLM or fallback to heuristics"""
-    return evaluate_with_llm(result_msg)
+    """Evaluate research result using Crustafarian Precepts"""
+    return evaluate_with_precepts(result_msg)
 
 
 # Track cancelled tasks

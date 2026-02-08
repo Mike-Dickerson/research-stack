@@ -115,10 +115,8 @@ services:
     depends_on:
       - kafka
       - postgres
-      - ollama
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
-      OLLAMA_HOST: http://ollama:11434
       POSTGRES_HOST: postgres
       POSTGRES_DB: researchdb
       POSTGRES_USER: research
@@ -128,61 +126,45 @@ services:
 
   # ---------------------------
   # Research Agent Runner (Python)
+  # Searches arXiv, PubMed, Semantic Scholar
   # ---------------------------
   research-agent-runner:
     build: ./services/agent-runner
     container_name: research-agent-runner
     depends_on:
       - kafka
-      - ollama
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
-      OLLAMA_HOST: http://ollama:11434
     networks:
       - research-net
 
   # ---------------------------
   # Research Critic (Python)
+  # Uses Crustafarian Precepts for evaluation (no Ollama)
   # ---------------------------
   research-critic:
     build: ./services/critic
     container_name: research-critic
     depends_on:
       - kafka
-      - ollama
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
-      OLLAMA_HOST: http://ollama:11434
     networks:
       - research-net
 
   # ---------------------------
   # Moltbook Bridge (External Swarm)
+  # Searches OpenAlex, CrossRef, NASA ADS
   # ---------------------------
   moltbook-bridge:
     build: ./services/moltbook-bridge
     container_name: moltbook-bridge
     depends_on:
       - kafka
-      - ollama
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
-      OLLAMA_HOST: http://ollama:11434
     networks:
       - research-net
-
-  # ---------------------------
-  # Ollama (Local LLM Server)
-  # ---------------------------
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    volumes:
-      - ./ollama-models:/root/.ollama  # Local directory - survives docker-compose down -v
-    networks:
-      - research-net
-    ports:
-      - "11434:11434"
 
   # ---------------------------
   # Document Generator (Python)
@@ -216,19 +198,35 @@ services:
 
   # ---------------------------
   # Hypothesis Manager (Web UI)
+  # Uses sentence-transformers for domain detection (no Ollama)
   # ---------------------------
   hypothesis-manager:
     build: ./services/hypothesis-manager
     container_name: hypothesis-manager
     depends_on:
       - kafka
-      - ollama
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
-      OLLAMA_HOST: http://ollama:11434
     volumes:
       - ./publications:/app/publications
     ports:
       - "5001:5001"
+    networks:
+      - research-net
+
+  # ---------------------------
+  # Ollama (LLM Server) - OPTIONAL
+  # Start separately: docker-compose --profile llm up -d ollama
+  # Used for generative tasks (screenplays, etc.)
+  # ---------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles:
+      - llm
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
     networks:
       - research-net
