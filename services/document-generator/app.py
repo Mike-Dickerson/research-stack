@@ -7,6 +7,7 @@ from kafka.errors import NoBrokersAvailable
 from jinja2 import Template
 import markdown
 from weasyprint import HTML, CSS
+from minio_client import get_papers_batch
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 OUTPUT_DIR = "/app/publications"
@@ -334,7 +335,7 @@ for improvement. Use the critique feedback to strengthen the hypothesis and resu
     return markdown_content
 
 
-def save_publication(task_id, markdown_content):
+def save_publication(task_id, markdown_content, paper_refs=None):
     """Save publication in multiple formats"""
     # Create filename-safe task ID
     safe_id = task_id[:8]
@@ -389,10 +390,26 @@ def save_publication(task_id, markdown_content):
     except Exception as e:
         print(f"  ⚠ PDF generation failed: {e}")
 
+    # Save papers as JSON attachment
+    papers_path = None
+    if paper_refs:
+        print(f"  → Retrieving {len(paper_refs)} papers from MinIO...")
+        papers = get_papers_batch(paper_refs)
+        if papers:
+            papers_path = os.path.join(OUTPUT_DIR, f"{base_filename}_papers.json")
+            with open(papers_path, 'w', encoding='utf-8') as f:
+                json.dump({
+                    "task_id": task_id,
+                    "paper_count": len(papers),
+                    "papers": papers
+                }, f, indent=2, ensure_ascii=False)
+            print(f"  ✓ Saved papers JSON: {papers_path}")
+
     return {
         "markdown": md_path,
         "html": html_path,
-        "pdf": pdf_path if os.path.exists(pdf_path) else None
+        "pdf": pdf_path if os.path.exists(pdf_path) else None,
+        "papers": papers_path
     }
 
 
@@ -484,6 +501,16 @@ def fetch_critiques(task_id):
     except Exception as e:
         print(f"  ⚠ Error fetching critiques: {e}")
         return []
+
+
+def collect_paper_refs(results):
+    """Collect all paper references from research results"""
+    all_refs = []
+    for result in results:
+        refs = result.get("result", {}).get("paper_refs", [])
+        all_refs.extend(refs)
+    # Dedupe while preserving order
+    return list(dict.fromkeys(all_refs))
 
 
 def generate_findings_narrative(results):
@@ -756,11 +783,16 @@ def main():
         print(f"  → Fetching critiques from research.critique topic...")
         critiques = fetch_critiques(task_id)
 
+        # Collect paper references from all results
+        print(f"  → Collecting paper references...")
+        paper_refs = collect_paper_refs(results)
+        print(f"  → Found {len(paper_refs)} paper references")
+
         # Generate publication with full data
         markdown_content = generate_publication(consensus, hypothesis, results, critiques)
 
-        # Save in multiple formats
-        files = save_publication(task_id, markdown_content)
+        # Save in multiple formats (including papers attachment)
+        files = save_publication(task_id, markdown_content, paper_refs)
 
         print(f"\n✅ Publication generated successfully!")
         print(f"{'='*70}\n")

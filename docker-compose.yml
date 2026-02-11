@@ -133,8 +133,12 @@ services:
     container_name: research-agent-runner
     depends_on:
       - kafka
+      - minio
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: miniopass
     networks:
       - research-net
 
@@ -149,6 +153,8 @@ services:
       - kafka
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+    volumes:
+      - ./config:/app/config:ro
     networks:
       - research-net
 
@@ -161,8 +167,12 @@ services:
     container_name: moltbook-bridge
     depends_on:
       - kafka
+      - minio
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: miniopass
     networks:
       - research-net
 
@@ -174,8 +184,12 @@ services:
     container_name: document-generator
     depends_on:
       - kafka
+      - minio
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: miniopass
     volumes:
       - ./publications:/app/publications
     networks:
@@ -209,6 +223,7 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
     volumes:
       - ./publications:/app/publications
+      - ./config:/app/config
     ports:
       - "5001:5001"
     networks:

@@ -9,6 +9,7 @@ from kafka.errors import NoBrokersAvailable
 from sentence_transformers import SentenceTransformer
 import arxiv
 import requests
+from minio_client import store_papers_batch
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 
@@ -288,6 +289,14 @@ def conduct_research(task):
     if papers:
         print(f"  → Top result [{papers[0].get('source', '?')}]: {papers[0]['title'][:50]}...")
 
+    # Store papers to MinIO
+    task_id = task.get("task_id", "unknown")
+    paper_refs = []
+    if papers:
+        print(f"  → Storing {len(papers)} papers to MinIO...")
+        paper_refs = store_papers_batch(task_id, papers)
+        print(f"  → Stored {len(paper_refs)} papers")
+
     # Analyze papers
     print(f"  → Analyzing papers...")
     analysis = analyze_papers(hypothesis, papers)
@@ -313,6 +322,9 @@ def conduct_research(task):
 
     # Add domain info
     analysis["domain"] = domain
+
+    # Add paper references
+    analysis["paper_refs"] = paper_refs
 
     return analysis
 

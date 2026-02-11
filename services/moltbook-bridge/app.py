@@ -7,6 +7,7 @@ from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
 import requests
+from minio_client import store_papers_batch
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 
@@ -437,6 +438,13 @@ def main():
         if papers:
             print(f"  Top result [{papers[0].get('source', '?')}]: {papers[0]['title'][:50]}...")
 
+        # Store papers to MinIO
+        paper_refs = []
+        if papers:
+            print(f"\n→ Storing {len(papers)} papers to MinIO...")
+            paper_refs = store_papers_batch(task_id, papers)
+            print(f"  Stored {len(paper_refs)} papers")
+
         # Analyze with external perspective
         print(f"\n→ Analyzing from external perspective...")
         analysis = analyze_external_papers(hypothesis, papers)
@@ -474,7 +482,8 @@ def main():
                 "methodology": analysis.get("methodology", "moltbook_external_v1"),
                 "sources_searched": analysis.get("sources_searched", []),
                 "external_validation": True,
-                "external_network": "moltbook_crustafarian_council"
+                "external_network": "moltbook_crustafarian_council",
+                "paper_refs": paper_refs
             },
             "confidence": float(analysis["confidence"]),
             "created_at": datetime.utcnow().isoformat()
