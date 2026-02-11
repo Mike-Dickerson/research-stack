@@ -30,6 +30,8 @@ if sys.platform == 'win32':
 load_dotenv()
 
 # Database connection parameters
+# if you're using a server, set it's IP here 
+# otherwise if you're using the stack from my repo(default) make it localhost
 DB_CONFIG = {
     'host': os.getenv('CLAUDE_BRAIN_SERVER', '10.0.0.50'),
     'port': 5434,
