@@ -23,6 +23,7 @@ app.secret_key = os.getenv("SECRET_KEY", "hypothesis-manager-secret-key")
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 PUBLICATIONS_DIR = "/app/publications"
+PRECEPTS_CONFIG_PATH = os.getenv("PRECEPTS_CONFIG", "/app/config/precepts.json")
 
 # Load sentence transformer model (small, fast, ~22MB)
 print("Loading sentence transformer model...")
@@ -734,6 +735,226 @@ HTML_TEMPLATE = """
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        /* Precepts Management Styles */
+        .precepts-section {
+            background: #16213e;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .precepts-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .precepts-header h2 {
+            margin: 0;
+            color: #38ef7d;
+        }
+        .precepts-toggle {
+            font-size: 1.5em;
+            color: #38ef7d;
+            transition: transform 0.3s;
+        }
+        .precepts-toggle.open {
+            transform: rotate(180deg);
+        }
+        .precepts-content {
+            display: none;
+            margin-top: 20px;
+        }
+        .precepts-content.open {
+            display: block;
+        }
+        .precept-item {
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .precept-name {
+            font-weight: bold;
+            color: #38ef7d;
+            margin-bottom: 5px;
+        }
+        .precept-description {
+            font-size: 0.9em;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+        .precept-weight-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .precept-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: 4px;
+            background: #1a1a2e;
+            outline: none;
+        }
+        .precept-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .precept-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            cursor: pointer;
+            border: none;
+        }
+        .precept-weight-value {
+            min-width: 60px;
+            text-align: right;
+            font-weight: bold;
+            color: #38ef7d;
+        }
+        .precepts-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #0f3460;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .precepts-total-label {
+            font-weight: bold;
+        }
+        .precepts-total-value {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .precepts-total-value.valid {
+            color: #2ecc71;
+        }
+        .precepts-total-value.invalid {
+            color: #e74c3c;
+        }
+        .precepts-actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn-save-precepts {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        .btn-reset-precepts {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+        .precepts-message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .precepts-message.success {
+            display: block;
+            background: #27ae60;
+            color: #fff;
+        }
+        .precepts-message.error {
+            display: block;
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        /* Add/Remove Precept Styles */
+        .precept-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .precept-info {
+            flex: 1;
+        }
+        .btn-delete-precept {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            padding: 5px 10px;
+            font-size: 0.8em;
+            margin-left: 10px;
+            flex-shrink: 0;
+        }
+        .btn-delete-precept:hover {
+            transform: translateY(-1px);
+        }
+        .add-precept-form {
+            background: #0f3460;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 2px dashed #38ef7d;
+        }
+        .add-precept-form h3 {
+            margin-top: 0;
+            color: #38ef7d;
+        }
+        .form-row {
+            margin-bottom: 15px;
+        }
+        .form-row label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+        .form-row input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 1em;
+            box-sizing: border-box;
+        }
+        .form-row input[type="text"]:focus {
+            outline: 2px solid #38ef7d;
+        }
+        .btn-add-precept {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .btn-cancel-add {
+            background: #555;
+            margin-left: 10px;
+        }
+        .add-precept-toggle {
+            margin-top: 15px;
+        }
+        .precept-name-input, .precept-desc-input {
+            background: transparent;
+            border: none;
+            color: inherit;
+            font: inherit;
+            width: 100%;
+            padding: 2px;
+        }
+        .precept-name-input:focus, .precept-desc-input:focus {
+            outline: 1px solid #38ef7d;
+            background: #1a1a2e;
+            border-radius: 3px;
+        }
+        .precept-name-input {
+            font-weight: bold;
+            color: #38ef7d;
+        }
+        .precept-desc-input {
+            font-size: 0.9em;
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
@@ -771,6 +992,59 @@ HTML_TEMPLATE = """
 Example: Galaxy rotation curve anomalies may be explainable without non-baryonic dark matter through under-modeled gravitational effects from supermassive black holes and spacetime geometry"></textarea>
             <button type="submit">Submit for Research</button>
         </form>
+    </div>
+
+    <!-- Precepts Management Section -->
+    <div class="precepts-section">
+        <div class="precepts-header" onclick="togglePrecepts()">
+            <h2>Research Precepts Configuration</h2>
+            <span id="preceptsToggle" class="precepts-toggle">▼</span>
+        </div>
+        <div id="preceptsContent" class="precepts-content">
+            <p style="color: #888; margin-bottom: 15px;">
+                Adjust weights, edit names/descriptions, or add/remove precepts.
+                Weights auto-balance to sum to 1.0. Changes apply after saving and restarting the critic.
+            </p>
+            <div id="preceptsList">
+                <!-- Precepts will be loaded dynamically -->
+                <div style="color: #888; text-align: center; padding: 20px;">Loading precepts...</div>
+            </div>
+
+            <!-- Add New Precept Form (hidden by default) -->
+            <div id="addPreceptForm" class="add-precept-form" style="display: none;">
+                <h3>Add New Precept</h3>
+                <div class="form-row">
+                    <label>Key (unique identifier, lowercase, underscores):</label>
+                    <input type="text" id="newPreceptKey" placeholder="e.g., ethical_review">
+                </div>
+                <div class="form-row">
+                    <label>Name (display name):</label>
+                    <input type="text" id="newPreceptName" placeholder="e.g., Ethical Review Required">
+                </div>
+                <div class="form-row">
+                    <label>Description (used for semantic matching):</label>
+                    <input type="text" id="newPreceptDesc" placeholder="e.g., Research must consider ethical implications">
+                </div>
+                <div>
+                    <button class="btn-add-precept" onclick="confirmAddPrecept()">Add Precept</button>
+                    <button class="btn-cancel-add" onclick="hideAddForm()">Cancel</button>
+                </div>
+            </div>
+
+            <div class="add-precept-toggle">
+                <button id="showAddFormBtn" class="btn-add-precept" onclick="showAddForm()">+ Add New Precept</button>
+            </div>
+
+            <div class="precepts-total">
+                <span class="precepts-total-label">Total Weight:</span>
+                <span id="totalWeight" class="precepts-total-value valid">1.00</span>
+            </div>
+            <div class="precepts-actions">
+                <button class="btn-save-precepts" onclick="savePrecepts()">Save Precepts</button>
+                <button class="btn-reset-precepts" onclick="loadPrecepts()">Reset Changes</button>
+            </div>
+            <div id="preceptsMessage" class="precepts-message"></div>
+        </div>
     </div>
 
     <div class="hypotheses-table">
@@ -899,7 +1173,258 @@ Example: Galaxy rotation curve anomalies may be explainable without non-baryonic
 
                 // Form will submit and redirect naturally
             });
+
+            // Load precepts on page load
+            loadPrecepts();
         });
+
+        // Precepts data storage
+        let preceptsData = {};
+        let originalPreceptsData = {};
+
+        function togglePrecepts() {
+            const content = document.getElementById('preceptsContent');
+            const toggle = document.getElementById('preceptsToggle');
+            content.classList.toggle('open');
+            toggle.classList.toggle('open');
+        }
+
+        function loadPrecepts() {
+            fetch('/precepts')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('preceptsList').innerHTML =
+                            '<div style="color: #e74c3c; text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
+                        return;
+                    }
+                    preceptsData = JSON.parse(JSON.stringify(data));
+                    originalPreceptsData = JSON.parse(JSON.stringify(data));
+                    renderPrecepts();
+                    hideMessage();
+                })
+                .catch(err => {
+                    document.getElementById('preceptsList').innerHTML =
+                        '<div style="color: #e74c3c; text-align: center; padding: 20px;">Failed to load precepts</div>';
+                });
+        }
+
+        function renderPrecepts() {
+            const container = document.getElementById('preceptsList');
+            let html = '';
+
+            for (const [key, precept] of Object.entries(preceptsData)) {
+                const weightPercent = Math.round(precept.weight * 100);
+                html += `
+                    <div class="precept-item" data-key="${key}">
+                        <div class="precept-header-row">
+                            <div class="precept-info">
+                                <input type="text" class="precept-name-input" value="${precept.name}"
+                                       data-key="${key}" data-field="name" onchange="onFieldChange(this)">
+                                <input type="text" class="precept-desc-input" value="${precept.description}"
+                                       data-key="${key}" data-field="description" onchange="onFieldChange(this)">
+                            </div>
+                            <button class="btn-delete-precept" onclick="deletePrecept('${key}')">Delete</button>
+                        </div>
+                        <div class="precept-weight-row">
+                            <input type="range" class="precept-slider" min="0" max="100" value="${weightPercent}"
+                                   data-key="${key}" oninput="onSliderChange(this)">
+                            <span class="precept-weight-value" id="weight-${key}">${precept.weight.toFixed(2)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+            updateTotalDisplay();
+        }
+
+        function onFieldChange(input) {
+            const key = input.dataset.key;
+            const field = input.dataset.field;
+            preceptsData[key][field] = input.value;
+        }
+
+        function deletePrecept(key) {
+            const precept = preceptsData[key];
+            if (!confirm(`Delete precept "${precept.name}"?\\n\\nIts weight will be redistributed to other precepts.`)) {
+                return;
+            }
+
+            const weightToRedistribute = preceptsData[key].weight;
+            delete preceptsData[key];
+
+            // Redistribute weight proportionally
+            const remainingKeys = Object.keys(preceptsData);
+            if (remainingKeys.length > 0) {
+                const currentTotal = remainingKeys.reduce((sum, k) => sum + preceptsData[k].weight, 0);
+                if (currentTotal > 0) {
+                    const scaleFactor = 1 / currentTotal;
+                    for (const k of remainingKeys) {
+                        preceptsData[k].weight = preceptsData[k].weight * scaleFactor;
+                    }
+                } else {
+                    // All weights were 0, distribute equally
+                    const equalWeight = 1 / remainingKeys.length;
+                    for (const k of remainingKeys) {
+                        preceptsData[k].weight = equalWeight;
+                    }
+                }
+            }
+
+            renderPrecepts();
+            showMessage('Precept deleted. Remember to save changes.', 'success');
+        }
+
+        function showAddForm() {
+            document.getElementById('addPreceptForm').style.display = 'block';
+            document.getElementById('showAddFormBtn').style.display = 'none';
+            document.getElementById('newPreceptKey').value = '';
+            document.getElementById('newPreceptName').value = '';
+            document.getElementById('newPreceptDesc').value = '';
+            document.getElementById('newPreceptKey').focus();
+        }
+
+        function hideAddForm() {
+            document.getElementById('addPreceptForm').style.display = 'none';
+            document.getElementById('showAddFormBtn').style.display = 'inline-block';
+        }
+
+        function confirmAddPrecept() {
+            const key = document.getElementById('newPreceptKey').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+            const name = document.getElementById('newPreceptName').value.trim();
+            const desc = document.getElementById('newPreceptDesc').value.trim();
+
+            if (!key || !name || !desc) {
+                showMessage('Please fill in all fields', 'error');
+                return;
+            }
+
+            if (preceptsData[key]) {
+                showMessage('A precept with this key already exists', 'error');
+                return;
+            }
+
+            // Calculate new weight (take equal share from existing)
+            const numPrecepts = Object.keys(preceptsData).length;
+            const newWeight = 1 / (numPrecepts + 1);
+
+            // Scale down existing weights
+            const scaleFactor = numPrecepts / (numPrecepts + 1);
+            for (const k of Object.keys(preceptsData)) {
+                preceptsData[k].weight = preceptsData[k].weight * scaleFactor;
+            }
+
+            // Add new precept
+            preceptsData[key] = {
+                name: name,
+                description: desc,
+                weight: newWeight
+            };
+
+            normalizeWeights();
+            renderPrecepts();
+            hideAddForm();
+            showMessage(`Added precept "${name}". Remember to save changes.`, 'success');
+        }
+
+        function onSliderChange(slider) {
+            const key = slider.dataset.key;
+            const newValue = parseInt(slider.value) / 100;
+            const oldValue = preceptsData[key].weight;
+            const delta = newValue - oldValue;
+
+            // Update the changed slider's precept
+            preceptsData[key].weight = newValue;
+
+            // Get other precepts to adjust
+            const otherKeys = Object.keys(preceptsData).filter(k => k !== key);
+            const otherTotal = otherKeys.reduce((sum, k) => sum + preceptsData[k].weight, 0);
+
+            if (otherTotal > 0 && delta !== 0) {
+                // Proportionally adjust other weights
+                const scaleFactor = (otherTotal - delta) / otherTotal;
+
+                for (const otherKey of otherKeys) {
+                    preceptsData[otherKey].weight = Math.max(0, preceptsData[otherKey].weight * scaleFactor);
+                }
+            }
+
+            // Normalize to ensure sum is exactly 1.0
+            normalizeWeights();
+
+            // Update all displays
+            updateAllDisplays();
+        }
+
+        function normalizeWeights() {
+            const total = Object.values(preceptsData).reduce((sum, p) => sum + p.weight, 0);
+            if (total > 0 && Math.abs(total - 1.0) > 0.001) {
+                for (const key of Object.keys(preceptsData)) {
+                    preceptsData[key].weight = preceptsData[key].weight / total;
+                }
+            }
+        }
+
+        function updateAllDisplays() {
+            for (const [key, precept] of Object.entries(preceptsData)) {
+                const slider = document.querySelector(`input.precept-slider[data-key="${key}"]`);
+                const valueDisplay = document.getElementById(`weight-${key}`);
+                if (slider && valueDisplay) {
+                    slider.value = Math.round(precept.weight * 100);
+                    valueDisplay.textContent = precept.weight.toFixed(2);
+                }
+            }
+            updateTotalDisplay();
+        }
+
+        function updateTotalDisplay() {
+            const total = Object.values(preceptsData).reduce((sum, p) => sum + p.weight, 0);
+            const totalEl = document.getElementById('totalWeight');
+            totalEl.textContent = total.toFixed(2);
+            totalEl.className = 'precepts-total-value ' + (Math.abs(total - 1.0) < 0.01 ? 'valid' : 'invalid');
+        }
+
+        function savePrecepts() {
+            // Round weights to 2 decimal places for clean JSON
+            const saveData = {};
+            for (const [key, precept] of Object.entries(preceptsData)) {
+                saveData[key] = {
+                    name: precept.name,
+                    description: precept.description,
+                    weight: Math.round(precept.weight * 100) / 100
+                };
+            }
+
+            fetch('/precepts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(saveData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showMessage(data.error, 'error');
+                } else {
+                    showMessage('Precepts saved! Restart critic to apply: docker-compose restart research-critic', 'success');
+                    originalPreceptsData = JSON.parse(JSON.stringify(preceptsData));
+                }
+            })
+            .catch(err => {
+                showMessage('Failed to save precepts: ' + err, 'error');
+            });
+        }
+
+        function showMessage(text, type) {
+            const el = document.getElementById('preceptsMessage');
+            el.textContent = text;
+            el.className = 'precepts-message ' + type;
+        }
+
+        function hideMessage() {
+            const el = document.getElementById('preceptsMessage');
+            el.className = 'precepts-message';
+        }
     </script>
 </body>
 </html>
@@ -1615,6 +2140,82 @@ def delete(task_id):
 
     print(f"Deleted hypothesis: {hypothesis_text}...")
     return redirect(url_for('index', message=f'Hypothesis deleted: {hypothesis_text}...'))
+
+
+@app.route('/precepts')
+def get_precepts():
+    """Get current precepts configuration"""
+    try:
+        if os.path.exists(PRECEPTS_CONFIG_PATH):
+            with open(PRECEPTS_CONFIG_PATH, 'r') as f:
+                precepts = json.load(f)
+            return json.dumps(precepts), 200, {'Content-Type': 'application/json'}
+        else:
+            return json.dumps({"error": "Precepts config not found"}), 404, {'Content-Type': 'application/json'}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {'Content-Type': 'application/json'}
+
+
+@app.route('/precepts', methods=['POST'])
+def save_precepts():
+    """Save precepts configuration"""
+    try:
+        precepts = request.get_json()
+        if not precepts:
+            return json.dumps({"error": "No data provided"}), 400, {'Content-Type': 'application/json'}
+
+        # Validate structure
+        total_weight = 0
+        for key, value in precepts.items():
+            if not isinstance(value, dict):
+                return json.dumps({"error": f"Invalid precept format for {key}"}), 400, {'Content-Type': 'application/json'}
+            if 'name' not in value or 'description' not in value or 'weight' not in value:
+                return json.dumps({"error": f"Missing required fields in {key}"}), 400, {'Content-Type': 'application/json'}
+            total_weight += float(value['weight'])
+
+        # Validate weights sum to ~1.0 (allow small floating point errors)
+        if abs(total_weight - 1.0) > 0.01:
+            return json.dumps({"error": f"Weights must sum to 1.0 (current: {total_weight:.3f})"}), 400, {'Content-Type': 'application/json'}
+
+        # Ensure config directory exists
+        config_dir = os.path.dirname(PRECEPTS_CONFIG_PATH)
+        os.makedirs(config_dir, exist_ok=True)
+
+        # Try to fix permissions if needed (Windows Docker workaround)
+        try:
+            if os.path.exists(PRECEPTS_CONFIG_PATH):
+                os.chmod(PRECEPTS_CONFIG_PATH, 0o666)
+        except OSError:
+            pass  # May fail on some systems, that's ok
+
+        # Save to file using atomic write pattern
+        temp_path = PRECEPTS_CONFIG_PATH + '.tmp'
+        try:
+            with open(temp_path, 'w') as f:
+                json.dump(precepts, f, indent=2)
+            # Atomic rename
+            if os.path.exists(PRECEPTS_CONFIG_PATH):
+                os.remove(PRECEPTS_CONFIG_PATH)
+            os.rename(temp_path, PRECEPTS_CONFIG_PATH)
+        except PermissionError as pe:
+            # Clean up temp file if it exists
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+            return json.dumps({
+                "error": f"Permission denied writing to config file. Try: docker-compose down && docker-compose up --build"
+            }), 500, {'Content-Type': 'application/json'}
+
+        print(f"Saved {len(precepts)} precepts to {PRECEPTS_CONFIG_PATH}")
+        return json.dumps({"success": True, "message": f"Saved {len(precepts)} precepts"}), 200, {'Content-Type': 'application/json'}
+    except PermissionError as pe:
+        return json.dumps({
+            "error": f"Permission denied: {str(pe)}. Rebuild container: docker-compose up --build hypothesis-manager"
+        }), 500, {'Content-Type': 'application/json'}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {'Content-Type': 'application/json'}
 
 
 if __name__ == '__main__':

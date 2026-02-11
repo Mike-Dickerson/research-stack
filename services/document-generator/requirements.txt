@@ -2,3 +2,4 @@ kafka-python
 jinja2
 markdown
 weasyprint
+minio>=7.2.0

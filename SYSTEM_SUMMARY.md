@@ -140,6 +140,63 @@ docker logs research-orchestrator | grep "CONSENSUS REACHED"
 open http://localhost:8080
 ```
 
+## Configuring Research Precepts
+
+The research evaluation criteria (Crustafarian Precepts) are fully configurable. Edit `config/precepts.json` to customize how hypotheses are evaluated.
+
+### Precept Structure
+
+Each precept requires:
+- `name`: Display name for reports
+- `description`: What this precept evaluates (used for semantic matching)
+- `weight`: Importance (0.0-1.0, all weights should sum to 1.0)
+
+### Default Precepts
+
+```json
+{
+  "evidence_over_authority": {
+    "name": "Evidence Over Authority",
+    "description": "Claims must be backed by data, not credentials",
+    "weight": 0.15
+  },
+  "reproducibility": {
+    "name": "Reproducibility Is Mandatory",
+    "description": "Methods and data sources must be specified for replication",
+    "weight": 0.12
+  }
+  // ... see config/precepts.json for full list
+}
+```
+
+### Customizing Precepts
+
+**Option 1: Via Web UI (Recommended)**
+1. Open Hypothesis Manager at http://localhost:5001
+2. Click "Research Precepts Configuration" to expand
+3. Use sliders to adjust weights (they auto-balance to sum to 1.0)
+4. Click "Save Precepts"
+5. Restart critic: `docker-compose restart research-critic`
+
+**Option 2: Edit JSON Directly**
+1. Edit `config/precepts.json`
+2. Restart the critic: `docker-compose restart research-critic`
+3. New evaluations will use updated precepts
+
+### Example: Adding a New Precept
+
+```json
+{
+  "ethical_consideration": {
+    "name": "Ethical Implications Addressed",
+    "description": "Research considers ethical impacts and societal consequences",
+    "weight": 0.10
+  }
+}
+```
+
+**Important**: Adjust other weights so total sums to 1.0.
+
 ## The Verdict
 
 **Your dark matter hypothesis passed peer review.**

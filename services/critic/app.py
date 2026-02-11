@@ -15,14 +15,13 @@ print("Loading sentence transformer model...")
 EMBEDDING_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
 print("Model loaded!")
 
-# Pre-compute embeddings for precept descriptions (for semantic alignment scoring)
-print("Computing precept embeddings...")
-PRECEPT_EMBEDDINGS = {}  # Will be populated after PRECEPTS is defined
+# ============================================================
+# CRUSTAFARIAN RESEARCH PRECEPTS - Configurable Scoring Rubric
+# ============================================================
+PRECEPTS_CONFIG_PATH = os.getenv("PRECEPTS_CONFIG", "/app/config/precepts.json")
 
-# ============================================================
-# CRUSTAFARIAN RESEARCH PRECEPTS - Scoring Rubric
-# ============================================================
-PRECEPTS = {
+# Default precepts (used as fallback if config file not found)
+DEFAULT_PRECEPTS = {
     "evidence_over_authority": {
         "name": "Evidence Over Authority",
         "description": "Claims must be backed by data, not credentials",
@@ -75,7 +74,27 @@ PRECEPTS = {
     }
 }
 
-# Compute precept embeddings after PRECEPTS is defined
+def load_precepts():
+    """Load precepts from config file, fall back to defaults if not found"""
+    if os.path.exists(PRECEPTS_CONFIG_PATH):
+        try:
+            with open(PRECEPTS_CONFIG_PATH, 'r') as f:
+                precepts = json.load(f)
+            print(f"Loaded {len(precepts)} precepts from {PRECEPTS_CONFIG_PATH}")
+            return precepts
+        except Exception as e:
+            print(f"Warning: Failed to load precepts config: {e}")
+            print("Using default precepts")
+            return DEFAULT_PRECEPTS
+    else:
+        print(f"Precepts config not found at {PRECEPTS_CONFIG_PATH}, using defaults")
+        return DEFAULT_PRECEPTS
+
+PRECEPTS = load_precepts()
+
+# Pre-compute embeddings for precept descriptions (for semantic alignment scoring)
+print("Computing precept embeddings...")
+PRECEPT_EMBEDDINGS = {}
 for precept_key, precept in PRECEPTS.items():
     text = f"{precept['name']}: {precept['description']}"
     PRECEPT_EMBEDDINGS[precept_key] = EMBEDDING_MODEL.encode(text, normalize_embeddings=True)
