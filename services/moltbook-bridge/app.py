@@ -467,7 +467,7 @@ def main():
             "agent_id": f"{bridge_id}-external-swarm",
             "result": {
                 "findings": analysis["findings"],
-                "confidence": analysis["confidence"],
+                "confidence": float(analysis["confidence"]),
                 "evidence_count": analysis["evidence_count"],
                 "concerns": analysis["concerns"],
                 "alternative_explanations": analysis.get("alternative_explanations", []),
@@ -476,7 +476,7 @@ def main():
                 "external_validation": True,
                 "external_network": "moltbook_crustafarian_council"
             },
-            "confidence": analysis["confidence"],
+            "confidence": float(analysis["confidence"]),
             "created_at": datetime.utcnow().isoformat()
         }
 

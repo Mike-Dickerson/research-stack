@@ -388,7 +388,7 @@ def main():
             "swarm_id": swarm_id,
             "agent_id": agent_id,
             "result": research_result,
-            "confidence": research_result["confidence"],
+            "confidence": float(research_result["confidence"]),
             "created_at": datetime.utcnow().isoformat()
         }
 
