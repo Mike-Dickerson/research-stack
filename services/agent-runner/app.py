@@ -2,6 +2,7 @@ import os
 import time
 import json
 import random
+import re
 import numpy as np
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
@@ -201,6 +202,68 @@ def search_papers(search_query, sources, max_per_source=5):
     return all_papers
 
 
+def extract_quotes_from_papers(hypothesis, papers, embedding_model):
+    """
+    Extract relevant phrases from paper abstracts.
+    Since we only have 300-char abstracts, we extract the most relevant sentences.
+    """
+    all_quotes = []
+
+    if not papers or not hypothesis:
+        return all_quotes
+
+    # Embed the hypothesis
+    hypothesis_emb = embedding_model.encode(hypothesis, normalize_embeddings=True)
+
+    for paper in papers:
+        abstract = paper.get("summary", "")
+        if not abstract or len(abstract) < 50:
+            continue
+
+        # Split abstract into sentences (by . ; or ?)
+        sentences = re.split(r'[.;?]', abstract)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+
+        if not sentences:
+            continue
+
+        # Embed all sentences
+        sentence_embs = embedding_model.encode(sentences, normalize_embeddings=True)
+
+        # Find the most relevant sentence
+        best_idx, best_score = -1, 0.0
+        for i, emb in enumerate(sentence_embs):
+            sim = float(np.dot(hypothesis_emb, emb))
+            if sim > best_score and sim > 0.3:  # Minimum relevance threshold
+                best_score = sim
+                best_idx = i
+
+        if best_idx >= 0:
+            # Determine context type based on similarity
+            if best_score > 0.5:
+                context_type = "supporting"
+            elif best_score > 0.4:
+                context_type = "related"
+            else:
+                context_type = "tangential"
+
+            all_quotes.append({
+                "text": sentences[best_idx].strip(),
+                "paper_ref": "",  # Will be filled after MinIO storage
+                "paper_title": paper.get("title", ""),
+                "paper_id": paper.get("id", ""),
+                "paper_source": paper.get("source", ""),
+                "paper_authors": paper.get("authors", []),
+                "paper_published": paper.get("published", ""),
+                "relevance_score": round(best_score, 3),
+                "context_type": context_type
+            })
+
+    # Sort by relevance and return top quotes
+    all_quotes.sort(key=lambda x: x["relevance_score"], reverse=True)
+    return all_quotes
+
+
 def analyze_papers(hypothesis, papers):
     """Semantic analysis of papers against hypothesis using embeddings"""
     evidence_count = len(papers)
@@ -257,6 +320,10 @@ def analyze_papers(hypothesis, papers):
 
     print(f"  → Semantic analysis: avg_similarity={avg_similarity:.3f}, confidence={confidence}")
 
+    # Extract quotes from paper abstracts
+    extracted_quotes = extract_quotes_from_papers(hypothesis, papers, EMBEDDING_MODEL)
+    print(f"  → Extracted {len(extracted_quotes)} quotes from papers")
+
     return {
         "confidence": confidence,
         "findings": findings,
@@ -264,7 +331,8 @@ def analyze_papers(hypothesis, papers):
         "methodology": "semantic_analysis_v1",
         "concerns": concerns,
         "sources_searched": sources_used,
-        "top_relevance_score": round(ranked_papers[0][1], 3) if ranked_papers else 0
+        "top_relevance_score": round(ranked_papers[0][1], 3) if ranked_papers else 0,
+        "extracted_quotes": extracted_quotes
     }
 
 
@@ -314,6 +382,20 @@ def conduct_research(task):
         analysis["methodology"] = "unknown"
     if "sources_searched" not in analysis:
         analysis["sources_searched"] = sources
+    if "extracted_quotes" not in analysis:
+        analysis["extracted_quotes"] = []
+
+    # Backfill paper_ref in extracted quotes using MinIO keys
+    # Create a mapping from paper_id to MinIO ref
+    paper_id_to_ref = {}
+    for i, paper in enumerate(papers):
+        if i < len(paper_refs):
+            paper_id_to_ref[paper.get("id", "")] = paper_refs[i]
+
+    for quote in analysis.get("extracted_quotes", []):
+        paper_id = quote.get("paper_id", "")
+        if paper_id and paper_id in paper_id_to_ref:
+            quote["paper_ref"] = paper_id_to_ref[paper_id]
 
     # Add top paper reference to findings
     if papers:

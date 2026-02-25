@@ -40,184 +40,192 @@ def wait_for_kafka(max_retries=30, delay=2):
     return None
 
 
-# Markdown template for research paper
-PAPER_TEMPLATE = """
+# New Research Document Template
+RESEARCH_DOCUMENT_TEMPLATE = """
 # {{ title }}
 
-**Distributed Multi-Agent Research Validation**
+**Research Document**
 **Generated**: {{ generated_date }}
-**Consensus ID**: `{{ task_id }}`
-**Swarm ID**: `{{ swarm_id }}`
+**Document ID**: `{{ task_id }}`
 
 ---
 
-## Executive Summary
+## Abstract
 
-This hypothesis was evaluated by a distributed multi-agent research system comprising:
-- **Local Research Agents**: arXiv literature search and analysis
-- **External Swarm Network**: Independent validation (Moltbook Crustafarian Council)
-- **Skeptical Peer Review**: Critical evaluation with bias correction
-- **Consensus Algorithm**: Democratic aggregation of independent assessments
-
-**Final Decision**: **{{ decision }}**
-**Consensus Score**: {{ average_score }} / 1.0
-**Consensus Strength**: {{ consensus_status }}
-**Score Variance**: {{ score_variance }} (lower = stronger agreement)
+{{ abstract }}
 
 ---
 
-## Hypothesis
+## 1. Original Hypothesis
 
-{{ hypothesis }}
-
----
-
-## Research Methodology
-
-### Multi-Agent Validation Process
-
-1. **Task Publication** (`research.task` topic)
-   - Hypothesis submitted to distributed research swarm
-   - Timestamp: {{ created_at }}
-   - Assigned unique task ID for full traceability
-
-2. **Parallel Research Execution**
-   - **Local Agents**: arXiv literature search, LLM analysis
-   - **External Swarm**: Independent validation via Moltbook network
-   - Both agents worked independently to avoid bias
-
-3. **Skeptical Peer Review** (`research.critique` topic)
-   - {{ critique_count }} independent evaluations performed
-   - External sources received 5% skepticism discount
-   - Critiques evaluated methodology, evidence, and rigor
-
-4. **Consensus Building** (`research.consensus` topic)
-   - Democratic aggregation of all critiques
-   - Statistical analysis of score distribution
-   - Consensus threshold: 2+ independent evaluations
+{{ original_hypothesis }}
 
 ---
 
-## Evaluation Results
+## 2. Literature Review
 
-### Consensus Metrics
+### 2.1 Sources Summary
 
-| Metric | Value | Interpretation |
-|--------|-------|----------------|
-| **Average Score** | {{ average_score }} | {{ score_interpretation }} |
-| **Score Variance** | {{ score_variance }} | {{ variance_interpretation }} |
-| **Consensus Status** | {{ consensus_status }} | {{ consensus_interpretation }} |
-| **Decision** | {{ decision }} | {{ decision_interpretation }} |
-| **External Swarm** | {{ external_participation }} | Independent validation performed |
+| Source | Papers Found | Key Topic |
+|--------|-------------|-----------|
+{% for source in sources_summary %}
+| {{ source.name }} | {{ source.count }} | {{ source.key_topic }} |
+{% endfor %}
 
-### Score Interpretation Guide
+**Total Papers Analyzed**: {{ total_papers }}
+**Total Quotes Extracted**: {{ total_quotes }}
 
-- **0.85 - 1.00**: Exceptional - Strong literature support, highly novel
-- **0.70 - 0.84**: Strong - Good evidence, worth significant investment
-- **0.60 - 0.69**: Promising - Adequate foundation, needs refinement
-- **0.40 - 0.59**: Needs Work - Insufficient evidence or methodology issues
-- **0.00 - 0.39**: Not Viable - Contradicts evidence or lacks foundation
+### 2.2 Key Evidence
 
----
+{% for item in bibliography %}
+#### {{ item.citation }}
 
-## Research Findings
+> "{{ item.quote }}"
 
-{{ findings_narrative }}
+**Relevance Score**: {{ item.relevance }} | **Context**: {{ item.context_type }}
 
----
+{% endfor %}
 
-{{ precept_analysis }}
-
----
-
-{{ dissertation_conclusion }}
-
----
-
-## Reproducibility & Transparency
-
-### Event Sourcing Trail
-This research validation is **fully reproducible**. The complete event log is available:
-
-- **Task ID**: `{{ task_id }}`
-- **Swarm ID**: `{{ swarm_id }}`
-- **Kafka Topics**: `research.task`, `research.result`, `research.critique`, `research.consensus`
-
-Any researcher can replay the exact sequence of events that led to this consensus decision by querying the Kafka event log.
-
-### Peer Review Transparency
-Unlike traditional peer review (anonymous, opaque), this validation provides:
-- ✅ Complete audit trail of all evaluations
-- ✅ Quantitative scores from each reviewer
-- ✅ Specific critique notes and concerns
-- ✅ Timestamp of every decision point
-- ✅ Bias correction methodology (5% external source discount)
-
----
-
-## Conclusion
-
-{{ conclusion }}
-
-### Recommended Next Steps
-
-{% if decision == "APPROVED" %}
-**This hypothesis has been approved for publication and further research.**
-
-Recommended actions:
-1. **Literature Review**: Conduct comprehensive review of related arXiv papers
-2. **Experimental Design**: Develop testable predictions and observational tests
-3. **Peer Collaboration**: Share findings with relevant research communities
-4. **Funding Applications**: Use this consensus as supporting evidence
-5. **Refinement**: Continue iterating on hypothesis based on feedback
-{% else %}
-**This hypothesis requires additional research before publication.**
-
-Recommended actions:
-1. **Address Concerns**: Review critique notes and address identified issues
-2. **Strengthen Evidence**: Find additional supporting literature or data
-3. **Refine Hypothesis**: Make predictions more specific and testable
-4. **Resubmit**: Submit refined version for re-evaluation
-5. **Iterate**: Use this feedback loop to improve research quality
+{% if not bibliography %}
+*No quotes were extracted from the literature.*
 {% endif %}
 
 ---
 
-## Appendix: Technical Details
+## 3. Hypothesis Evolution
 
-### System Architecture
-- **Event Backbone**: Apache Kafka (event sourcing)
-- **Research Agents**: Python microservices with arXiv API integration
-- **LLM Analysis**: Ollama (phi3:mini, 3.8B parameters, local inference)
-- **Peer Review**: Skeptical critic with bias correction
-- **External Validation**: Moltbook distributed swarm network
+{% if hypothesis_versions|length > 1 %}
+The hypothesis underwent **{{ hypothesis_versions|length - 1 }} refinement(s)** based on evidence analysis.
 
-### Consensus Algorithm
-```
-consensus_status =
-  if score_variance < 0.05: "STRONG_CONSENSUS"
-  elif score_variance < 0.15: "MODERATE_CONSENSUS"
-  else: "DIVERGENT_OPINIONS"
+{% for version in hypothesis_versions %}
+### Version {{ version.version }}{% if version.version == 1 %} (Original){% endif %}
 
-decision =
-  if average_score > 0.6: "APPROVED"
-  else: "NEEDS_MORE_RESEARCH"
-```
+**Hypothesis**: {{ version.text }}
 
-### Bias Mitigation
-- External sources receive 5% skepticism discount
-- Multiple independent evaluators required (minimum 2)
-- Distributed consensus prevents single-point-of-failure
-- Full transparency enables bias detection
+{% if version.version > 1 %}
+**Modification Trigger**: {{ version.trigger }}
+
+**Reasoning**: {{ version.reasoning }}
+
+{% endif %}
+{% endfor %}
+
+### Final Hypothesis
+
+{{ current_hypothesis }}
+
+{% else %}
+The hypothesis remained **unchanged** throughout the research process.
+
+**Hypothesis**: {{ current_hypothesis }}
+{% endif %}
 
 ---
 
-**Generated by Research Stack v1.0**
-*Distributed Multi-Agent Research Validation System*
-*Event-Sourced • Transparent • Reproducible*
+## 4. Methodology
 
-Repository: https://github.com/yourusername/research-stack
-License: MIT
+### 4.1 Research Process
+
+This research was conducted using a distributed multi-agent validation system:
+
+1. **Literature Search**: Parallel searches across multiple academic databases
+   - Local agents: {{ local_sources }}
+   - External validation: {{ external_sources }}
+
+2. **Evidence Analysis**: Semantic similarity analysis using sentence-transformers
+   - Papers analyzed: {{ total_papers }}
+   - Quotes extracted: {{ total_quotes }}
+
+3. **Peer Review**: {{ critique_count }} independent evaluations using Crustafarian Precepts
+
+4. **Consensus Building**: Democratic aggregation with 0.6 threshold for approval
+
+### 4.2 Iterations
+
+| Iteration | Outcome | Score |
+|-----------|---------|-------|
+{% for iter in iterations %}
+| {{ iter.number }} | {{ iter.outcome }} | {{ iter.score }} |
+{% endfor %}
+
+---
+
+## 5. Results
+
+### 5.1 Consensus Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Final Score** | {{ average_score }} |
+| **Score Variance** | {{ score_variance }} |
+| **Consensus Status** | {{ consensus_status }} |
+| **External Validation** | {{ external_participation }} |
+
+### 5.2 Precept Alignment Summary
+
+{% for precept, score in precept_scores.items() %}
+- **{{ precept }}**: {{ score }}{% if score >= 0.7 %} (Pass){% elif score >= 0.5 %} (Marginal){% else %} (Fail){% endif %}
+{% endfor %}
+
+---
+
+## 6. Conclusion
+
+### 6.1 Hypothesis Verdict
+
+**Confidence Rating**: {{ confidence_rating }} ({{ confidence_text }})
+
+**Verdict**: **{{ verdict }}**
+
+{{ verdict_text }}
+
+### 6.2 Summary of Findings
+
+{{ conclusion_summary }}
+
+{% if supporting_evidence %}
+**Key Supporting Evidence:**
+{% for evidence in supporting_evidence %}
+- {{ evidence }}
+{% endfor %}
+{% endif %}
+
+{% if concerns %}
+**Concerns Noted:**
+{% for concern in concerns %}
+- {{ concern }}
+{% endfor %}
+{% endif %}
+
+### 6.3 Recommendations
+
+{% if verdict == "SUPPORTED" or verdict == "PARTIALLY SUPPORTED" %}
+This hypothesis has sufficient evidence support for further investigation:
+
+1. Conduct deeper literature review in specific sub-areas
+2. Design experiments to test key predictions
+3. Seek peer collaboration in relevant research communities
+{% else %}
+This hypothesis requires refinement before proceeding:
+
+1. Address the concerns noted above
+2. Gather additional evidence in weak areas
+3. Consider narrowing or refining the hypothesis scope
+4. Resubmit for re-evaluation after improvements
+{% endif %}
+
+---
+
+## References
+
+{% for ref in references %}
+{{ ref }}
+
+{% endfor %}
+
+---
+
+*Generated by Research Stack v2.0 - Distributed Multi-Agent Research System*
 """
 
 
@@ -261,6 +269,381 @@ def generate_decision_interpretation(decision):
         return "Hypothesis approved for publication and further research"
     else:
         return "Hypothesis requires refinement before publication"
+
+
+def generate_apa_citation(paper):
+    """Generate APA-style citation from paper metadata"""
+    authors = paper.get("authors", [])
+    title = paper.get("title", "Unknown Title")
+    published = paper.get("published", "n.d.")
+    source = paper.get("source", "")
+    paper_id = paper.get("id", "")
+
+    # Format authors (Last, F. M.)
+    formatted_authors = []
+    for author in authors[:3]:
+        if not author:
+            continue
+        parts = author.split()
+        if len(parts) >= 2:
+            last = parts[-1]
+            initials = ". ".join(p[0].upper() for p in parts[:-1] if p) + "."
+            formatted_authors.append(f"{last}, {initials}")
+        else:
+            formatted_authors.append(author)
+
+    if len(authors) > 3:
+        author_str = ", ".join(formatted_authors) + ", et al."
+    elif len(formatted_authors) > 1:
+        author_str = ", & ".join(formatted_authors)
+    elif formatted_authors:
+        author_str = formatted_authors[0]
+    else:
+        author_str = "Unknown Author"
+
+    # Extract year
+    year = published[:4] if published and len(published) >= 4 else "n.d."
+
+    # Format based on source
+    if source == "arXiv":
+        return f"{author_str} ({year}). {title}. *arXiv preprint* arXiv:{paper_id}."
+    elif source == "PubMed":
+        return f"{author_str} ({year}). {title}. *PubMed* {paper_id}."
+    elif paper_id and ("10." in str(paper_id) or "doi" in str(paper_id).lower()):
+        return f"{author_str} ({year}). {title}. https://doi.org/{paper_id}"
+    else:
+        return f"{author_str} ({year}). {title}. *{source}*."
+
+
+def generate_conclusion(avg_score, findings, concerns, quotes):
+    """Generate the hypothesis conclusion with verdict and confidence"""
+
+    # Determine verdict based on score
+    if avg_score >= 0.75:
+        verdict = "SUPPORTED"
+        verdict_text = "The evidence strongly supports this hypothesis. The literature review found consistent supporting evidence across multiple sources."
+    elif avg_score >= 0.6:
+        verdict = "PARTIALLY SUPPORTED"
+        verdict_text = "The evidence provides partial support for this hypothesis. While some literature supports the core claims, there are areas that require further investigation."
+    elif avg_score >= 0.4:
+        verdict = "INCONCLUSIVE"
+        verdict_text = "The available evidence is insufficient to draw a firm conclusion. The literature search found limited or mixed results."
+    else:
+        verdict = "NOT SUPPORTED"
+        verdict_text = "The evidence does not support this hypothesis. The literature review found insufficient or contradicting evidence."
+
+    # Confidence interpretation
+    if avg_score >= 0.8:
+        confidence_text = "High confidence - strong evidence alignment"
+    elif avg_score >= 0.6:
+        confidence_text = "Moderate confidence - reasonable evidence support"
+    elif avg_score >= 0.4:
+        confidence_text = "Low confidence - limited or mixed evidence"
+    else:
+        confidence_text = "Very low confidence - contradicting or absent evidence"
+
+    # Build conclusion summary
+    finding_count = len(findings) if findings else 0
+    quote_count = len(quotes) if quotes else 0
+    supporting_quotes = [q for q in (quotes or []) if q.get("context_type") == "supporting"]
+
+    summary_parts = []
+    summary_parts.append(f"This research analyzed {finding_count} findings from multiple academic sources.")
+
+    if quote_count > 0:
+        summary_parts.append(f"{quote_count} relevant excerpts were extracted from the literature.")
+
+    if supporting_quotes:
+        summary_parts.append(f"{len(supporting_quotes)} excerpts directly support the hypothesis.")
+
+    if concerns:
+        summary_parts.append(f"{len(concerns)} concerns were noted during the evaluation.")
+
+    conclusion_summary = " ".join(summary_parts)
+
+    # Format supporting evidence for display
+    supporting_evidence = []
+    for q in supporting_quotes[:3]:
+        supporting_evidence.append(f'"{q.get("text", "")[:100]}..." - {q.get("paper_title", "Unknown")[:50]}')
+
+    return {
+        "confidence_rating": f"{avg_score:.2f}",
+        "confidence_text": confidence_text,
+        "verdict": verdict,
+        "verdict_text": verdict_text,
+        "conclusion_summary": conclusion_summary,
+        "supporting_evidence": supporting_evidence,
+        "concerns": concerns[:5] if concerns else []
+    }
+
+
+def collect_all_quotes(results):
+    """Collect all extracted quotes from research results"""
+    all_quotes = []
+    for result in results:
+        result_quotes = result.get("result", {}).get("extracted_quotes", [])
+        all_quotes.extend(result_quotes)
+    # Sort by relevance
+    all_quotes.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+    return all_quotes
+
+
+def build_bibliography(quotes, papers):
+    """Build bibliography with quotes and APA citations"""
+    bibliography = []
+
+    # Create paper lookup by ref and id
+    paper_lookup = {}
+    for paper in papers:
+        paper_id = paper.get("id", "")
+        if paper_id:
+            paper_lookup[paper_id] = paper
+
+    # Process quotes
+    for quote in quotes[:10]:  # Limit to top 10 quotes
+        paper_id = quote.get("paper_id", "")
+        paper_title = quote.get("paper_title", "")
+
+        # Try to find the full paper info
+        paper = paper_lookup.get(paper_id)
+        if not paper:
+            # Build minimal paper info from quote
+            paper = {
+                "title": paper_title,
+                "authors": quote.get("paper_authors", []),
+                "published": quote.get("paper_published", ""),
+                "source": quote.get("paper_source", ""),
+                "id": paper_id
+            }
+
+        citation = generate_apa_citation(paper)
+
+        bibliography.append({
+            "citation": citation,
+            "quote": quote.get("text", "")[:200],
+            "relevance": f"{quote.get('relevance_score', 0):.2f}",
+            "context_type": quote.get("context_type", "related").title()
+        })
+
+    return bibliography
+
+
+def build_references_list(quotes, papers):
+    """Build a list of unique APA references"""
+    seen_ids = set()
+    references = []
+
+    # Create paper lookup
+    paper_lookup = {}
+    for paper in papers:
+        paper_id = paper.get("id", "")
+        if paper_id:
+            paper_lookup[paper_id] = paper
+
+    # Add papers from quotes
+    for quote in quotes:
+        paper_id = quote.get("paper_id", "")
+        if paper_id and paper_id not in seen_ids:
+            paper = paper_lookup.get(paper_id)
+            if not paper:
+                paper = {
+                    "title": quote.get("paper_title", ""),
+                    "authors": quote.get("paper_authors", []),
+                    "published": quote.get("paper_published", ""),
+                    "source": quote.get("paper_source", ""),
+                    "id": paper_id
+                }
+            references.append(generate_apa_citation(paper))
+            seen_ids.add(paper_id)
+
+    # Add remaining papers
+    for paper in papers:
+        paper_id = paper.get("id", "")
+        if paper_id and paper_id not in seen_ids:
+            references.append(generate_apa_citation(paper))
+            seen_ids.add(paper_id)
+
+    return references[:20]  # Limit to 20 references
+
+
+def generate_abstract_synthesis(hypothesis_evolution, avg_score, total_papers, total_quotes, verdict):
+    """Generate a synthesized abstract for the document"""
+    original = hypothesis_evolution.get("original", "")
+    current = hypothesis_evolution.get("current", "")
+    versions = hypothesis_evolution.get("versions", [])
+
+    # Truncate hypothesis for abstract
+    hyp_preview = current[:150] + "..." if len(current) > 150 else current
+
+    evolution_text = ""
+    if len(versions) > 1:
+        evolution_text = f"Through {len(versions)-1} iteration(s) of evidence-based refinement, the hypothesis was modified to better align with available literature. "
+
+    verdict_text = {
+        "SUPPORTED": "The evidence supports the validity of this hypothesis for further investigation.",
+        "PARTIALLY SUPPORTED": "The evidence provides partial support, with some areas requiring further investigation.",
+        "INCONCLUSIVE": "The available evidence is insufficient to draw a firm conclusion.",
+        "NOT SUPPORTED": "Additional research is recommended before proceeding with this hypothesis."
+    }.get(verdict, "The research evaluation has been completed.")
+
+    return f"""This research document presents a systematic evaluation of the hypothesis: "{hyp_preview}"
+
+{evolution_text}A total of {total_papers} papers were analyzed from multiple academic databases. {total_quotes} relevant excerpts were extracted to support the analysis. The final confidence rating is {avg_score:.2f}/1.0.
+
+{verdict_text}"""
+
+
+def generate_research_document(consensus_msg, hypothesis, results, critiques, papers):
+    """Generate the new research document format"""
+
+    # Extract basic data
+    task_id = consensus_msg.get("task_id", "unknown")
+    average_score = consensus_msg.get("average_score", 0.0)
+    score_variance = consensus_msg.get("score_variance", 0.0)
+    consensus_status = consensus_msg.get("consensus_status", "UNKNOWN")
+    decision = consensus_msg.get("decision", "UNKNOWN")
+    critique_count = consensus_msg.get("critique_count", 0)
+    external_participated = consensus_msg.get("external_swarm_participated", False)
+    iteration = consensus_msg.get("iteration", 1)
+
+    # Get hypothesis evolution
+    hypothesis_evolution = consensus_msg.get("hypothesis_evolution", {})
+    if not hypothesis_evolution or not hypothesis_evolution.get("original"):
+        # Fallback: create minimal evolution structure
+        hypothesis_evolution = {
+            "original": hypothesis,
+            "current": hypothesis,
+            "versions": [{
+                "version": 1,
+                "text": hypothesis,
+                "trigger": "initial",
+                "reasoning": "Original hypothesis as submitted"
+            }]
+        }
+
+    original_hypothesis = hypothesis_evolution.get("original", hypothesis)
+    current_hypothesis = hypothesis_evolution.get("current", hypothesis)
+    hypothesis_versions = hypothesis_evolution.get("versions", [])
+
+    # Collect all quotes
+    all_quotes = collect_all_quotes(results)
+    total_quotes = len(all_quotes)
+
+    # Build bibliography from quotes
+    bibliography = build_bibliography(all_quotes, papers)
+
+    # Build references list
+    references = build_references_list(all_quotes, papers)
+
+    # Generate sources summary
+    sources_summary = []
+    source_counts = {}
+    for result in results:
+        sources = result.get("result", {}).get("sources_searched", [])
+        for source in sources:
+            source_counts[source] = source_counts.get(source, 0) + result.get("result", {}).get("evidence_count", 0)
+
+    for source, count in source_counts.items():
+        sources_summary.append({
+            "name": source,
+            "count": count,
+            "key_topic": "Academic literature"
+        })
+
+    # Calculate totals
+    total_papers = sum(r.get("result", {}).get("evidence_count", 0) for r in results)
+
+    # Identify local vs external sources
+    local_sources = []
+    external_sources = []
+    for result in results:
+        agent_id = result.get("agent_id", "")
+        sources = result.get("result", {}).get("sources_searched", [])
+        if "external" in agent_id.lower() or "moltbook" in agent_id.lower():
+            external_sources.extend(sources)
+        else:
+            local_sources.extend(sources)
+
+    local_sources = ", ".join(set(local_sources)) if local_sources else "None"
+    external_sources = ", ".join(set(external_sources)) if external_sources else "None"
+
+    # Collect all concerns
+    all_concerns = []
+    for result in results:
+        all_concerns.extend(result.get("result", {}).get("concerns", []))
+
+    # Collect all findings
+    all_findings = []
+    for result in results:
+        all_findings.extend(result.get("result", {}).get("findings", []))
+
+    # Generate conclusion
+    conclusion_data = generate_conclusion(average_score, all_findings, all_concerns, all_quotes)
+
+    # Aggregate precept scores from critiques
+    precept_scores = {}
+    for critique in critiques:
+        for precept, score in critique.get("precept_scores", {}).items():
+            if precept not in precept_scores:
+                precept_scores[precept] = []
+            precept_scores[precept].append(float(score) if score else 0)
+
+    # Average the precept scores
+    avg_precept_scores = {}
+    for precept, scores in precept_scores.items():
+        avg_precept_scores[precept] = f"{sum(scores)/len(scores):.2f}" if scores else "N/A"
+
+    # Build iterations data
+    iterations = [{
+        "number": iteration,
+        "outcome": decision,
+        "score": f"{average_score:.2f}"
+    }]
+
+    # Generate abstract
+    abstract = generate_abstract_synthesis(
+        hypothesis_evolution, average_score, total_papers, total_quotes,
+        conclusion_data["verdict"]
+    )
+
+    # Create title
+    title_preview = current_hypothesis[:50] + "..." if len(current_hypothesis) > 50 else current_hypothesis
+    title = f"Research Document: {title_preview}"
+
+    # Render template
+    template = Template(RESEARCH_DOCUMENT_TEMPLATE)
+    markdown_content = template.render(
+        title=title,
+        generated_date=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        task_id=task_id,
+        abstract=abstract,
+        original_hypothesis=original_hypothesis,
+        current_hypothesis=current_hypothesis,
+        hypothesis_versions=hypothesis_versions,
+        sources_summary=sources_summary,
+        total_papers=total_papers,
+        total_quotes=total_quotes,
+        bibliography=bibliography,
+        local_sources=local_sources,
+        external_sources=external_sources,
+        critique_count=critique_count,
+        iterations=iterations,
+        average_score=f"{average_score:.2f}",
+        score_variance=f"{score_variance:.4f}",
+        consensus_status=consensus_status,
+        external_participation="Yes" if external_participated else "No",
+        precept_scores=avg_precept_scores,
+        confidence_rating=conclusion_data["confidence_rating"],
+        confidence_text=conclusion_data["confidence_text"],
+        verdict=conclusion_data["verdict"],
+        verdict_text=conclusion_data["verdict_text"],
+        conclusion_summary=conclusion_data["conclusion_summary"],
+        supporting_evidence=conclusion_data["supporting_evidence"],
+        concerns=conclusion_data["concerns"],
+        references=references
+    )
+
+    return markdown_content
 
 
 def generate_publication(consensus_msg, hypothesis, results, critiques):
@@ -335,12 +718,12 @@ for improvement. Use the critique feedback to strengthen the hypothesis and resu
     return markdown_content
 
 
-def save_publication(task_id, markdown_content, paper_refs=None):
-    """Save publication in multiple formats"""
+def save_publication(task_id, markdown_content, paper_refs=None, papers=None):
+    """Save research document in multiple formats"""
     # Create filename-safe task ID
     safe_id = task_id[:8]
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    base_filename = f"publication_{timestamp}_{safe_id}"
+    base_filename = f"research_document_{timestamp}_{safe_id}"
 
     # Save Markdown
     md_path = os.path.join(OUTPUT_DIR, f"{base_filename}.md")
@@ -392,18 +775,15 @@ def save_publication(task_id, markdown_content, paper_refs=None):
 
     # Save papers as JSON attachment
     papers_path = None
-    if paper_refs:
-        print(f"  → Retrieving {len(paper_refs)} papers from MinIO...")
-        papers = get_papers_batch(paper_refs)
-        if papers:
-            papers_path = os.path.join(OUTPUT_DIR, f"{base_filename}_papers.json")
-            with open(papers_path, 'w', encoding='utf-8') as f:
-                json.dump({
-                    "task_id": task_id,
-                    "paper_count": len(papers),
-                    "papers": papers
-                }, f, indent=2, ensure_ascii=False)
-            print(f"  ✓ Saved papers JSON: {papers_path}")
+    if papers:
+        papers_path = os.path.join(OUTPUT_DIR, f"{base_filename}_papers.json")
+        with open(papers_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "task_id": task_id,
+                "paper_count": len(papers),
+                "papers": papers
+            }, f, indent=2, ensure_ascii=False)
+        print(f"  ✓ Saved papers JSON: {papers_path}")
 
     return {
         "markdown": md_path,
@@ -764,7 +1144,7 @@ def main():
         score = consensus.get("average_score", 0.0)
 
         print(f"\n{'='*70}")
-        print(f"📄 GENERATING PUBLICATION #{publication_count}")
+        print(f"📄 GENERATING RESEARCH DOCUMENT #{publication_count}")
         print(f"{'='*70}")
         print(f"Task ID: {task_id}")
         print(f"Decision: {decision}")
@@ -788,13 +1168,20 @@ def main():
         paper_refs = collect_paper_refs(results)
         print(f"  → Found {len(paper_refs)} paper references")
 
-        # Generate publication with full data
-        markdown_content = generate_publication(consensus, hypothesis, results, critiques)
+        # Fetch papers from MinIO for bibliography generation
+        papers = []
+        if paper_refs:
+            print(f"  → Retrieving papers from MinIO for bibliography...")
+            papers = get_papers_batch(paper_refs)
+            print(f"  → Retrieved {len(papers)} papers")
+
+        # Generate research document with full data
+        markdown_content = generate_research_document(consensus, hypothesis, results, critiques, papers)
 
         # Save in multiple formats (including papers attachment)
-        files = save_publication(task_id, markdown_content, paper_refs)
+        files = save_publication(task_id, markdown_content, paper_refs, papers)
 
-        print(f"\n✅ Publication generated successfully!")
+        print(f"\n✅ Research document generated successfully!")
         print(f"{'='*70}\n")
 
 

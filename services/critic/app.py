@@ -139,6 +139,48 @@ def compute_precept_alignment(findings_text, precept_key):
     return min(1.0, max(0.0, similarity + 0.3))
 
 
+def suggest_hypothesis_refinement(precept_scores, evidence_count, confidence):
+    """
+    Generate hypothesis refinement suggestions based on evaluation.
+    These suggestions feed back to the orchestrator for potential hypothesis modification.
+    """
+    suggestions = []
+
+    # Check for scope issues (low adversarial survival = evidence doesn't support full scope)
+    if precept_scores.get("adversarial_survival", 0) < 0.5:
+        suggestions.append({
+            "type": "scope_refinement",
+            "reason": "Evidence does not strongly support the full scope of the hypothesis",
+            "suggestion": "Consider narrowing the hypothesis to specific conditions or cases where evidence is stronger"
+        })
+
+    # Check for precision issues (low evidence + low confidence)
+    if precept_scores.get("evidence_over_authority", 0) < 0.5 and confidence < 0.5:
+        suggestions.append({
+            "type": "precision_improvement",
+            "reason": "Hypothesis lacks specificity for the available evidence",
+            "suggestion": "Add quantitative parameters or specific mechanisms to make the hypothesis more testable"
+        })
+
+    # Check for overconfidence issues
+    if precept_scores.get("uncertainty_over_wrong", 0) < 0.5:
+        suggestions.append({
+            "type": "evidence_conflict",
+            "reason": "Confidence level may not be justified by available evidence",
+            "suggestion": "Add uncertainty qualifiers to better reflect the current state of evidence"
+        })
+
+    # Check for weak evidence base
+    if evidence_count < 3 and precept_scores.get("evidence_over_authority", 0) < 0.4:
+        suggestions.append({
+            "type": "evidence_conflict",
+            "reason": "Insufficient evidence to support the hypothesis as stated",
+            "suggestion": "Consider reformulating as a more exploratory question or narrowing focus"
+        })
+
+    return suggestions
+
+
 def wait_for_kafka(max_retries=30, delay=2):
     """Wait for Kafka to be available with retries"""
     for attempt in range(max_retries):
@@ -305,13 +347,19 @@ def evaluate_with_precepts(result_msg):
     if precept_scores.get("external_swarms", 0) > 0.7:
         notes.append("External validation present")
 
+    # Generate hypothesis refinement suggestions
+    hypothesis_suggestions = suggest_hypothesis_refinement(precept_scores, evidence_count, confidence)
+    if hypothesis_suggestions:
+        print(f"  → Generated {len(hypothesis_suggestions)} refinement suggestion(s)")
+
     return {
         "score": score,
         "precept_scores": precept_scores,
         "flags": flags,
         "notes": " | ".join(notes),
         "evaluation_method": "semantic_crustafarian_v1",
-        "semantic_coherence": round(coherence, 3)
+        "semantic_coherence": round(coherence, 3),
+        "hypothesis_suggestions": hypothesis_suggestions
     }
 
 
@@ -408,6 +456,7 @@ def main():
             "flags": evaluation["flags"],
             "notes": evaluation["notes"],
             "evaluation_method": evaluation.get("evaluation_method", "unknown"),
+            "hypothesis_suggestions": evaluation.get("hypothesis_suggestions", []),
             "created_at": datetime.utcnow().isoformat()
         }
 
