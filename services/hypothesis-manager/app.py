@@ -467,16 +467,24 @@ def find_publications(task_id):
     if not os.path.exists(PUBLICATIONS_DIR):
         return None
 
-    # Publications are named: publication_YYYYMMDD_HHMMSS_taskid8.ext
+    # Publications can be named with either legacy or new prefixes:
+    # - publication_YYYYMMDD_HHMMSS_taskid8.ext
+    # - research_document_YYYYMMDD_HHMMSS_taskid8.ext
     short_id = task_id[:8]
     publications = {}
 
     for ext in ['md', 'html', 'pdf']:
-        pattern = os.path.join(PUBLICATIONS_DIR, f"publication_*_{short_id}.{ext}")
-        matches = glob.glob(pattern)
+        patterns = [
+            os.path.join(PUBLICATIONS_DIR, f"publication_*_{short_id}.{ext}"),
+            os.path.join(PUBLICATIONS_DIR, f"research_document_*_{short_id}.{ext}")
+        ]
+        matches = []
+        for pattern in patterns:
+            matches.extend(glob.glob(pattern))
         if matches:
-            # Get the most recent one
-            publications[ext] = os.path.basename(sorted(matches)[-1])
+            # Get the most recently modified file
+            latest = max(matches, key=os.path.getmtime)
+            publications[ext] = os.path.basename(latest)
 
     return publications if publications else None
 
