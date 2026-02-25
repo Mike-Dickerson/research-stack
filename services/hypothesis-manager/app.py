@@ -202,7 +202,7 @@ results = {}     # task_id -> list of results
 critiques = {}   # task_id -> list of critiques
 cancelled_tasks = set()  # task_ids that have been deleted/cancelled
 
-def wait_for_kafka_producer(max_retries=30, delay=2):
+def wait_for_kafka_producer(max_retries=30, delay=15):
     """Wait for Kafka to be available and return a producer"""
     for attempt in range(max_retries):
         try:

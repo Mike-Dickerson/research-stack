@@ -98,7 +98,7 @@ def ensure_topics():
         print(f"Topic setup error: {e}")
 
 
-def wait_for_kafka_producer(max_retries=30, delay=2):
+def wait_for_kafka_producer(max_retries=30, delay=15):
     """Wait for Kafka to be available and return a producer"""
     for attempt in range(max_retries):
         try:

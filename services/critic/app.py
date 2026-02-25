@@ -181,7 +181,7 @@ def suggest_hypothesis_refinement(precept_scores, evidence_count, confidence):
     return suggestions
 
 
-def wait_for_kafka(max_retries=30, delay=2):
+def wait_for_kafka(max_retries=30, delay=15):
     """Wait for Kafka to be available with retries"""
     for attempt in range(max_retries):
         try:
