@@ -1,0 +1,41 @@
+Loading weights: 100%|██████████| 103/103 [00:01<00:00, 85.41it/s, Materializing param=pooler.dense.weight]
+
+BertModel LOAD REPORT from: sentence-transformers/all-MiniLM-L6-v2
+
+Key                     | Status     |  | 
+
+------------------------+------------+--+-
+
+embeddings.position_ids | UNEXPECTED |  | 
+
+
+Notes:
+
+- UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+
+Model loaded!
+
+Computing domain embeddings...
+
+Computed embeddings for 9 domains
+
+Kafka listener starting...Starting Hypothesis Manager...
+
+Visit: http://localhost:5001⁠
+
+
+ * Serving Flask app 'app'
+
+ * Debug mode: off
+
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+
+ * Running on all addresses (0.0.0.0)
+
+ * Running on http://127.0.0.1:5001⁠
+
+ * Running on http://172.20.0.14:5001⁠
+
+Press CTRL+C to quit
+
+Hypothesis Manager connected to Kafka (group: hypothesis-manager-c...)

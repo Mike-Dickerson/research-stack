@@ -18,7 +18,7 @@ print("Model loaded!")
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 
-def wait_for_kafka(max_retries=30, delay=2):
+def wait_for_kafka(max_retries=30, delay=15):
     """Wait for Kafka to be available with retries"""
     for attempt in range(max_retries):
         try:

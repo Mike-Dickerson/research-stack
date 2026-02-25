@@ -16,7 +16,7 @@ OUTPUT_DIR = "/app/publications"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-def wait_for_kafka(max_retries=30, delay=2):
+def wait_for_kafka(max_retries=30, delay=15):
     """Wait for Kafka to be available"""
     for attempt in range(max_retries):
         try:
