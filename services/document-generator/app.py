@@ -164,7 +164,7 @@ This research was conducted using a distributed multi-agent validation system:
 ### 5.2 Precept Alignment Summary
 
 {% for precept, score in precept_scores.items() %}
-- **{{ precept }}**: {{ score }}{% if score >= 0.7 %} (Pass){% elif score >= 0.5 %} (Marginal){% else %} (Fail){% endif %}
+- **{{ precept }}**: {{ "%.2f"|format(score|float) }}{% if (score|float) >= 0.7 %} (Pass){% elif (score|float) >= 0.5 %} (Marginal){% else %} (Fail){% endif %}
 {% endfor %}
 
 ---
@@ -588,10 +588,10 @@ def generate_research_document(consensus_msg, hypothesis, results, critiques, pa
                 precept_scores[precept] = []
             precept_scores[precept].append(float(score) if score else 0)
 
-    # Average the precept scores
+    # Average the precept scores as numeric values (used by Jinja comparisons)
     avg_precept_scores = {}
     for precept, scores in precept_scores.items():
-        avg_precept_scores[precept] = f"{sum(scores)/len(scores):.2f}" if scores else "N/A"
+        avg_precept_scores[precept] = (sum(scores) / len(scores)) if scores else 0.0
 
     # Build iterations data
     iterations = [{
