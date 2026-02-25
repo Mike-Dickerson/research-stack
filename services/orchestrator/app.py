@@ -54,9 +54,15 @@ def get_task_state(task_id):
             "sources": [],
             "search_terms_history": [],
             "critic_feedback": [],
+            "hypothesis_suggestions": [],
             "status": "RESEARCHING",
             "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.utcnow().isoformat(),
+            "hypothesis_evolution": {
+                "original": "",
+                "current": "",
+                "versions": []
+            }
         }
     return task_states[task_id]
 
@@ -224,6 +230,141 @@ def refine_search_terms(hypothesis, domain, previous_terms, critic_concerns):
     return new_terms
 
 
+# ============== HYPOTHESIS EVOLUTION ==============
+
+def should_modify_hypothesis(task_state, critiques, avg_score, score_variance):
+    """
+    Determine if hypothesis should be modified vs just search refinement.
+    Returns (should_modify: bool, trigger: str or None, suggestions: list)
+    """
+    iteration = task_state.get("iteration", 1)
+    suggestions = task_state.get("hypothesis_suggestions", [])
+
+    # Collect suggestions from critiques
+    for critique in critiques:
+        critique_suggestions = critique.get("hypothesis_suggestions", [])
+        suggestions.extend(critique_suggestions)
+
+    # Decision logic for when to modify hypothesis
+    # 1. First iteration with very low score = evidence conflict
+    if iteration == 1 and avg_score < 0.4:
+        return True, "evidence_conflict", suggestions
+
+    # 2. High variance = divergent opinions = scope too broad
+    if score_variance > 0.15:
+        return True, "scope_refinement", suggestions
+
+    # 3. Multiple iterations with middling scores = needs precision
+    if iteration >= 2 and avg_score < 0.5:
+        return True, "precision_improvement", suggestions
+
+    return False, None, suggestions
+
+
+def generate_modified_hypothesis(current_hypothesis, trigger, suggestions):
+    """
+    Generate a modified hypothesis based on trigger type.
+    Uses heuristic rules (no LLM required).
+    Returns (modified_hypothesis: str, reasoning: str)
+    """
+    modified = current_hypothesis
+
+    if trigger == "evidence_conflict":
+        # Add uncertainty qualifiers
+        replacements = [
+            ("causes ", "may be associated with "),
+            ("proves ", "suggests "),
+            ("demonstrates ", "indicates "),
+            ("shows that ", "provides evidence that "),
+            (" is ", " may be "),
+            (" are ", " may be "),
+        ]
+        for old, new in replacements:
+            if old in modified.lower():
+                # Case-insensitive replacement
+                import re
+                modified = re.sub(re.escape(old), new, modified, flags=re.IGNORECASE, count=1)
+                break
+        else:
+            # If no replacement made, add qualifier at start
+            if not modified.lower().startswith(("it is possible", "evidence suggests", "it may be")):
+                modified = "Evidence suggests that " + modified[0].lower() + modified[1:]
+
+        reasoning = "Modified due to evidence conflict: Added uncertainty qualifiers to better reflect available evidence"
+
+    elif trigger == "scope_refinement":
+        # Narrow the scope
+        replacements = [
+            ("all ", "some "),
+            ("always ", "often "),
+            ("never ", "rarely "),
+            ("every ", "many "),
+            ("universal", "context-dependent"),
+            ("generally ", "in certain cases, "),
+        ]
+        for old, new in replacements:
+            if old in modified.lower():
+                import re
+                modified = re.sub(re.escape(old), new, modified, flags=re.IGNORECASE, count=1)
+                break
+        else:
+            # Add scope limitation at end
+            if not modified.rstrip('.').endswith(("in certain conditions", "in some cases", "under specific circumstances")):
+                modified = modified.rstrip('.') + ", under specific conditions."
+
+        reasoning = "Modified due to divergent evaluator opinions: Narrowed scope to reduce ambiguity"
+
+    elif trigger == "precision_improvement":
+        # Add precision qualifier
+        if not modified.rstrip('.').endswith(("when certain parameters are met", "given specific criteria", "under defined conditions")):
+            modified = modified.rstrip('.') + ", when certain parameters are met."
+
+        reasoning = "Modified to improve precision: Added specific conditions to make hypothesis more testable"
+
+    else:
+        reasoning = "No modification applied"
+
+    return modified, reasoning
+
+
+def initialize_hypothesis_evolution(state, hypothesis):
+    """Initialize hypothesis evolution tracking for a new task"""
+    if not state["hypothesis_evolution"]["original"]:
+        state["hypothesis_evolution"] = {
+            "original": hypothesis,
+            "current": hypothesis,
+            "versions": [{
+                "version": 1,
+                "text": hypothesis,
+                "timestamp": datetime.utcnow().isoformat(),
+                "trigger": "initial",
+                "reasoning": "Original hypothesis as submitted",
+                "evidence_refs": []
+            }]
+        }
+
+
+def add_hypothesis_version(state, new_hypothesis, trigger, reasoning, evidence_refs=None):
+    """Add a new version to hypothesis evolution"""
+    versions = state["hypothesis_evolution"]["versions"]
+    new_version = len(versions) + 1
+
+    state["hypothesis_evolution"]["current"] = new_hypothesis
+    state["hypothesis_evolution"]["versions"].append({
+        "version": new_version,
+        "text": new_hypothesis,
+        "timestamp": datetime.utcnow().isoformat(),
+        "trigger": trigger,
+        "reasoning": reasoning,
+        "evidence_refs": evidence_refs or []
+    })
+
+    # Also update the main hypothesis field
+    state["hypothesis"] = new_hypothesis
+
+    return new_version
+
+
 # ============== CRUSTAFARIAN PRECEPTS ==============
 
 CRUSTAFARIAN_PRECEPTS = """
@@ -312,6 +453,7 @@ def republish_task_with_refinement(producer, task_id, new_search_terms):
         "iteration": new_iteration,
         "payload": {
             "hypothesis": state["hypothesis"],
+            "hypothesis_evolution": state["hypothesis_evolution"],
             "domain": state["domain"],
             "sources": state["sources"],
             "search_terms": new_search_terms,
@@ -407,6 +549,11 @@ def consensus_monitor(producer):
             else:
                 state["critic_feedback"].append(str(notes))
 
+        # Store hypothesis suggestions from critic
+        hypothesis_suggestions = critique.get("hypothesis_suggestions", [])
+        if hypothesis_suggestions:
+            state["hypothesis_suggestions"].extend(hypothesis_suggestions)
+
         critiques_for_task = task_critiques[task_id]
 
         # Check if we have enough critiques for consensus
@@ -453,6 +600,7 @@ def consensus_monitor(producer):
                 "decision": decision,
                 "iteration": current_iteration,
                 "max_iterations": MAX_ITERATIONS,
+                "hypothesis_evolution": state.get("hypothesis_evolution", {}),
                 "created_at": datetime.utcnow().isoformat()
             }
 
@@ -482,9 +630,33 @@ def consensus_monitor(producer):
 
             # Handle decision
             if decision == "NEEDS_MORE_RESEARCH":
-                print(f"\n→ Refining search terms for retry...")
+                print(f"\n→ Analyzing whether to modify hypothesis or refine search...")
 
-                # Get refined search terms using Ollama
+                # Check if hypothesis should be modified
+                should_modify, trigger, suggestions = should_modify_hypothesis(
+                    state, critiques_for_task, avg_score, score_variance
+                )
+
+                if should_modify and trigger:
+                    print(f"  → Hypothesis modification triggered: {trigger}")
+                    current_hyp = state["hypothesis_evolution"]["current"]
+                    modified_hyp, reasoning = generate_modified_hypothesis(current_hyp, trigger, suggestions)
+
+                    if modified_hyp != current_hyp:
+                        new_ver = add_hypothesis_version(state, modified_hyp, trigger, reasoning)
+                        print(f"  → Created hypothesis version {new_ver}")
+                        print(f"  → Reasoning: {reasoning[:60]}...")
+
+                        log_audit(producer, task_id, "HYPOTHESIS_MODIFIED", {
+                            "trigger": trigger,
+                            "reasoning": reasoning,
+                            "old_hypothesis": current_hyp[:100],
+                            "new_hypothesis": modified_hyp[:100],
+                            "version": new_ver
+                        }, current_iteration)
+
+                # Get refined search terms
+                print(f"  → Refining search terms...")
                 new_terms = refine_search_terms(
                     state["hypothesis"],
                     state["domain"],
@@ -492,7 +664,7 @@ def consensus_monitor(producer):
                     state["critic_feedback"]
                 )
 
-                # Republish with new terms
+                # Republish with new terms (and potentially modified hypothesis)
                 new_iteration = republish_task_with_refinement(producer, task_id, new_terms)
                 print(f"→ Republished task for iteration {new_iteration}")
 
@@ -553,10 +725,13 @@ def task_listener():
 
         # Only update if this is a new task (iteration 1) or if we don't have hypothesis yet
         if not state["hypothesis"]:
-            state["hypothesis"] = payload.get("hypothesis", "")
+            hypothesis = payload.get("hypothesis", "")
+            state["hypothesis"] = hypothesis
             state["domain"] = payload.get("domain", "unknown")
             state["sources"] = payload.get("sources", [])
             state["swarm_id"] = task.get("swarm_id", "")
+            # Initialize hypothesis evolution tracking
+            initialize_hypothesis_evolution(state, hypothesis)
 
         # Always update iteration
         state["iteration"] = iteration
