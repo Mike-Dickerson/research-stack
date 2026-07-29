@@ -6,7 +6,7 @@ import re
 import numpy as np
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
-from kafka.errors import NoBrokersAvailable
+from kafka.errors import KafkaError
 from sentence_transformers import SentenceTransformer
 import arxiv
 import requests

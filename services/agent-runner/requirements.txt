@@ -1,4 +1,4 @@
-kafka-python
+kafka-python<3.0.0
 requests
 arxiv
 numpy>=1.24.0

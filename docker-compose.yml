@@ -1,4 +1,4 @@
-version: "3.9"
+
 
 networks:
   research-net:
@@ -29,6 +29,7 @@ services:
       - research-net
     ports:
       - "2181:2181"
+    restart: unless-stopped
 
 
   # ---------------------------
@@ -46,12 +47,15 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_HEAP_OPTS: -Xms512M -Xmx1G
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
       - research-net
     ports:
       - "9092:9092"
+    restart: unless-stopped
+    mem_limit: 2g
 
 
   # ---------------------------
@@ -123,6 +127,8 @@ services:
       POSTGRES_PASSWORD: researchpass
     networks:
       - research-net
+    restart: unless-stopped
+    mem_limit: 2g
 
   # ---------------------------
   # Research Agent Runner (Python)
@@ -141,6 +147,8 @@ services:
       MINIO_SECRET_KEY: miniopass
     networks:
       - research-net
+    restart: unless-stopped
+    mem_limit: 3g
 
   # ---------------------------
   # Research Critic (Python)
@@ -157,6 +165,8 @@ services:
       - ./config:/app/config:ro
     networks:
       - research-net
+    restart: unless-stopped
+    mem_limit: 2g
 
   # ---------------------------
   # Moltbook Bridge (External Swarm)
@@ -175,6 +185,8 @@ services:
       MINIO_SECRET_KEY: miniopass
     networks:
       - research-net
+    restart: unless-stopped
+    mem_limit: 2g
 
   # ---------------------------
   # Document Generator (Python)
@@ -194,6 +206,8 @@ services:
       - ./publications:/app/publications
     networks:
       - research-net
+    restart: unless-stopped
+    mem_limit: 2g
 
   # ---------------------------
   # Swarm Dashboard (Web UI)
@@ -209,6 +223,7 @@ services:
       - "5004:5000"
     networks:
       - research-net
+    restart: unless-stopped
 
   # ---------------------------
   # Hypothesis Manager (Web UI)
@@ -221,13 +236,14 @@ services:
       - kafka
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+    ports:
+      - "5001:5001"
     volumes:
       - ./publications:/app/publications
       - ./config:/app/config
-    ports:
-      - "5001:5001"
     networks:
       - research-net
+    restart: unless-stopped
 
   # ---------------------------
   # Ollama (LLM Server) - OPTIONAL

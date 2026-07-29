@@ -1,0 +1,27 @@
+HYPOTHESIS: Finite-Density Gravitational Collapse
+
+Core Claim:
+Physical mass and energy are always finite. During gravitational collapse, matter may be compressed to arbitrarily high but finite density, producing an event horizon, but the physical volume never becomes exactly zero and density remains finite everywhere.
+
+Mathematical Test:
+Can the Tolman–Oppenheimer–Volkoff (TOV) equations, coupled with a physically motivated equation of state (such as neutron matter, quark matter, or a limiting-pressure mechanism), produce regular, singularity-free solutions for objects with:
+- Mass approximately 1–100 solar masses
+- Compactness M/R approaching but not exceeding the Schwarzschild radius
+- Finite central density ρ_c < ∞
+- Finite central pressure P_c < ∞
+- Curvature invariants remaining finite (e.g., Riemann scalar I_1 = R_μνρσ R^μνρσ finite)
+- Stability under radial perturbations
+
+Key Constraint:
+A maximum-density limit ρ_max must arise from either:
+1. Established physics (degeneracy pressure, speed-of-sound limits, known equations of state)
+2. A mathematically consistent modification to GR with physical justification (not ad hoc)
+
+The event horizon forms, but interior structure remains regular.
+
+Falsification Test:
+- If no physically motivated EOS produces regular solutions at Schwarzschild compactness, the hypothesis fails.
+- If singularity theorems prove regularity is impossible under reasonable assumptions, the hypothesis fails.
+- If stability analysis shows the proposed state is non-physical or unstable, the hypothesis fails.
+
+If some EOS or mechanism allows regularity while preserving GR locally, identify it precisely and quantify the differences from standard (singular) black holes in: ringdown spectrum, tidal deformability, and information transport.

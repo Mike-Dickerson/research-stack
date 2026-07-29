@@ -1,5 +1,5 @@
 flask>=3.0.0
-kafka-python>=2.0.2
+kafka-python==2.0.2
 numpy>=1.24.0
 # CPU-only PyTorch (much smaller than full CUDA version)
 --extra-index-url https://download.pytorch.org/whl/cpu

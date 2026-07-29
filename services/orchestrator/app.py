@@ -19,7 +19,7 @@ from threading import Thread
 from collections import defaultdict
 from kafka import KafkaAdminClient, KafkaProducer, KafkaConsumer
 from kafka.admin import NewTopic
-from kafka.errors import NoBrokersAvailable
+from kafka.errors import KafkaError, NoBrokersAvailable
 import re
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
@@ -109,7 +109,7 @@ def wait_for_kafka_producer(max_retries=30, delay=15):
             )
             print("Producer connected!")
             return producer
-        except NoBrokersAvailable:
+        except (KafkaError, Exception):
             if attempt < max_retries - 1:
                 print(f"Kafka not available, waiting {delay}s...")
                 time.sleep(delay)

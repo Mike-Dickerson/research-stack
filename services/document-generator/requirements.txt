@@ -1,4 +1,4 @@
-kafka-python
+kafka-python<3.0.0
 jinja2
 markdown
 weasyprint

@@ -15,7 +15,7 @@ import numpy as np
 from datetime import datetime
 from flask import Flask, render_template_string, request, redirect, url_for, send_from_directory, session
 from kafka import KafkaConsumer, KafkaProducer
-from kafka.errors import NoBrokersAvailable
+from kafka.errors import KafkaError
 from sentence_transformers import SentenceTransformer
 
 app = Flask(__name__)
@@ -211,7 +211,7 @@ def wait_for_kafka_producer(max_retries=30, delay=15):
                 value_serializer=lambda v: json.dumps(v).encode('utf-8')
             )
             return producer
-        except NoBrokersAvailable:
+        except (KafkaError, Exception):
             if attempt < max_retries - 1:
                 time.sleep(delay)
             else:

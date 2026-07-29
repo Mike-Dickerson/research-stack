@@ -3,7 +3,7 @@ import json
 import time
 from datetime import datetime
 from kafka import KafkaConsumer
-from kafka.errors import NoBrokersAvailable
+from kafka.errors import KafkaError, NoBrokersAvailable
 from jinja2 import Template
 import markdown
 from weasyprint import HTML, CSS

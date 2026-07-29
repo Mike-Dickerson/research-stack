@@ -6,7 +6,7 @@ import re
 import numpy as np
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
-from kafka.errors import NoBrokersAvailable
+from kafka.errors import KafkaError, NoBrokersAvailable
 from sentence_transformers import SentenceTransformer
 import requests
 from minio_client import store_papers_batch

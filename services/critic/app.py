@@ -5,7 +5,7 @@ import random
 import numpy as np
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
-from kafka.errors import NoBrokersAvailable
+from kafka.errors import KafkaError, NoBrokersAvailable
 from sentence_transformers import SentenceTransformer
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
@@ -195,7 +195,7 @@ def wait_for_kafka(max_retries=30, delay=15):
             )
             print("Successfully connected to Kafka!")
             return consumer
-        except NoBrokersAvailable:
+        except (KafkaError, Exception):
             if attempt < max_retries - 1:
                 print(f"Kafka not available yet, waiting {delay} seconds...")
                 time.sleep(delay)
