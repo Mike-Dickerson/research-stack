@@ -82,7 +82,7 @@ services:
     container_name: postgres
     environment:
       POSTGRES_USER: research
-      POSTGRES_PASSWORD: researchpass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-researchpass}
       POSTGRES_DB: researchdb
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -99,8 +99,8 @@ services:
     container_name: minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: miniopass
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-miniopass}
     volumes:
       - minio-data:/data
     networks:
@@ -124,7 +124,7 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_DB: researchdb
       POSTGRES_USER: research
-      POSTGRES_PASSWORD: researchpass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-researchpass}
     networks:
       - research-net
     restart: unless-stopped
@@ -143,8 +143,8 @@ services:
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minio
-      MINIO_SECRET_KEY: miniopass
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-miniopass}
     networks:
       - research-net
     restart: unless-stopped
@@ -181,8 +181,8 @@ services:
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minio
-      MINIO_SECRET_KEY: miniopass
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-miniopass}
     networks:
       - research-net
     restart: unless-stopped
@@ -200,8 +200,8 @@ services:
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minio
-      MINIO_SECRET_KEY: miniopass
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-miniopass}
     volumes:
       - ./publications:/app/publications
     networks:
